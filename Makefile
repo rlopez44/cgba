@@ -5,9 +5,9 @@ BIN_DIR = bin
 INSTALL_DIR = /usr/local/bin
 BIN = cgba
 
-vpath %.c src/
+vpath %.c src/ src/cpu/
 
-SRC = $(notdir $(wildcard src/*.c))
+SRC = $(notdir $(wildcard src/*.c src/*/*.c))
 OBJS = $(patsubst %.c, $(OBJ_DIR)/%.o, $(SRC))
 
 # file dependencies, created by gcc
