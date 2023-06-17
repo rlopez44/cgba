@@ -1,5 +1,7 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
 
@@ -49,7 +51,7 @@ static bool check_cond(arm7tdmi *cpu)
     return result;
 }
 
-void bx(arm7tdmi *cpu)
+static void bx(arm7tdmi *cpu)
 {
     if (!check_cond(cpu))
         return;
@@ -72,4 +74,52 @@ void bx(arm7tdmi *cpu)
 
     // BX causes a pipeline flush and refill from [Rn]
     reload_pipeline(cpu);
+}
+
+static inline void panic_illegal_instruction(uint32_t inst)
+{
+    fprintf(stderr, "Error: Illegal instruction encountered: %08X\n", inst);
+    exit(1);
+}
+
+void decode_and_execute_arm(arm7tdmi *cpu)
+{
+    // decoding is going to involve a lot of magic numbers
+    // See references in `README.md` for encoding documentation
+    uint32_t inst = cpu->pipeline[0];
+    if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
+        bx(cpu);
+    else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
+        goto unimplemented;
+    else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
+        goto unimplemented;
+    else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
+        goto unimplemented;
+    else if ((inst & 0x0e000010) == 0x06000010) // undefined
+        goto unimplemented;
+    else if ((inst & 0x0c000000) == 0x04000000) // single data transfer
+        goto unimplemented;
+    else if ((inst & 0x0f800ff0) == 0x01000090) // single data swap
+        goto unimplemented;
+    else if ((inst & 0x0f0000f0) == 0x00000090) // multiply and multiply long
+        goto unimplemented;
+    else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
+        goto unimplemented;
+    else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
+        goto unimplemented;
+    else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
+        goto unimplemented;
+    else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
+        goto unimplemented;
+    else if ((inst & 0x0c000000) == 0x00000000) // data processing
+        goto unimplemented;
+    else
+        panic_illegal_instruction(inst);
+
+    return;
+
+// temporary until all instructions are implemented
+unimplemented:
+    fprintf(stderr, "Error: Unimplemented instruction encountered: %08X\n", inst);
+    exit(1);
 }

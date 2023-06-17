@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
@@ -19,6 +20,20 @@ void reload_pipeline(arm7tdmi *cpu)
         cpu->pipeline[0] = read_word(cpu->mem, cpu->registers[R15] + 0);
         cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15] + 4);
         cpu->registers[R15] += 8;
+    }
+}
+
+static void decode_and_execute(arm7tdmi *cpu)
+{
+    if (cpu->cpsr & T_BITMASK)
+    {
+        // TODO: thumb support
+        fprintf(stderr, "NotImplemented: Thumb instructions\n");
+        exit(1);
+    }
+    else
+    {
+        decode_and_execute_arm(cpu);
     }
 }
 
