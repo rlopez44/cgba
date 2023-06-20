@@ -10,5 +10,6 @@ typedef struct gba_mem {
 
 uint32_t read_word(gba_mem *mem, uint32_t addr);
 uint16_t read_halfword(gba_mem *mem, uint32_t addr);
+uint8_t read_byte(gba_mem *mem, uint32_t addr);
 
 #endif /* CGBA_MEMORY_H */

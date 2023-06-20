@@ -24,3 +24,8 @@ uint16_t read_halfword(gba_mem *mem, uint32_t addr)
 
     return val;
 }
+
+uint8_t read_byte(gba_mem *mem, uint32_t addr)
+{
+    return mem->mmap[addr];
+}
