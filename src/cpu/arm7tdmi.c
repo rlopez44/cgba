@@ -54,9 +54,26 @@ static void reset_cpu(arm7tdmi *cpu)
     cpu->registers[R14] = 0x0;
 }
 
-arm7tdmi *init_cpu(void)
+arm7tdmi *init_cpu(gba_mem *mem)
 {
     arm7tdmi *cpu = malloc(sizeof(arm7tdmi));
+    if (cpu == NULL)
+        return NULL;
+
+    cpu->pipeline[0] = 0;
+    cpu->pipeline[1] = 0;
+    cpu->cpsr = 0;
+    for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
+        cpu->registers[i] = 0;
+
+    for (int i = 0; i < ARM_NUM_BANKS; ++i)
+    {
+        cpu->spsr[i] = 0;
+        for (int j = 0; j < ARM_NUM_BANKED_REGISTERS; ++j)
+            cpu->banked_registers[i][j] = 0;
+    }
+
+    cpu->mem = mem;
     reset_cpu(cpu);
     return cpu;
 }

@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include "cgba/memory.h"
 
 uint32_t read_word(gba_mem *mem, uint32_t addr)
@@ -28,4 +30,19 @@ uint16_t read_halfword(gba_mem *mem, uint32_t addr)
 uint8_t read_byte(gba_mem *mem, uint32_t addr)
 {
     return mem->mmap[addr];
+}
+
+gba_mem *init_memory(void)
+{
+    gba_mem *mem = malloc(sizeof(gba_mem));
+    if (mem == NULL)
+        return NULL;
+
+    memset(mem->mmap, 0, sizeof mem->mmap);
+    return mem;
+}
+
+void deinit_memory(gba_mem *mem)
+{
+    free(mem);
 }

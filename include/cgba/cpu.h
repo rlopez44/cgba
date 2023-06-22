@@ -22,7 +22,7 @@ typedef struct arm7tdmi {
 
 
 /* Create and initialize the ARM7TDMI CPU */
-arm7tdmi *init_cpu(void);
+arm7tdmi *init_cpu(gba_mem *mem);
 
 /* Free memory allocated for the CPU */
 void deinit_cpu(arm7tdmi *cpu);
