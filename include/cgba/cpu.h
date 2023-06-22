@@ -27,4 +27,7 @@ arm7tdmi *init_cpu(gba_mem *mem);
 /* Free memory allocated for the CPU */
 void deinit_cpu(arm7tdmi *cpu);
 
+/* Run the CPU for one instruction */
+void run_cpu(arm7tdmi *cpu);
+
 #endif /* CGBA_CPU_H */

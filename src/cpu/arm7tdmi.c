@@ -37,6 +37,11 @@ static void decode_and_execute(arm7tdmi *cpu)
     }
 }
 
+void run_cpu(arm7tdmi *cpu)
+{
+    decode_and_execute(cpu);
+}
+
 /* Reset the CPU by performing the following:
  *
  * - store PC and CPSR into R14_svc and SPSR_svc
@@ -52,6 +57,11 @@ static void reset_cpu(arm7tdmi *cpu)
     cpu->spsr[BANK_SVC] = cpu->cpsr;
     cpu->cpsr = (cpu->cpsr & ~0xff) | 0xd3;
     cpu->registers[R14] = 0x0;
+
+    // to simplify things, we'll also use a few more cycles
+    // to fill up the instruction pipeline, rather than
+    // deferring this to the CPU's run function
+    reload_pipeline(cpu);
 }
 
 arm7tdmi *init_cpu(gba_mem *mem)

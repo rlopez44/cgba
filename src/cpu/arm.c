@@ -17,7 +17,7 @@
 #define COND_V_BITMASK (1 << COND_V_SHIFT)
 
 // decode ARM condition field
-static bool check_cond(arm7tdmi *cpu)
+static bool check_cond(arm7tdmi *cpu, uint32_t inst)
 {
     bool n_set = cpu->cpsr & COND_N_BITMASK;
     bool z_set = cpu->cpsr & COND_Z_BITMASK;
@@ -25,7 +25,7 @@ static bool check_cond(arm7tdmi *cpu)
     bool v_set = cpu->cpsr & COND_V_BITMASK;
 
     bool result;
-    switch ((cpu->pipeline[0] >> 28) & 0xf)
+    switch ((inst >> 28) & 0xf)
     {
         case 0x0: result = z_set; break;
         case 0x1: result = !z_set; break;
@@ -92,12 +92,9 @@ static void restore_cpsr(arm7tdmi *cpu)
         cpu->cpsr = cpu->spsr[mode];
 }
 
-static void bx(arm7tdmi *cpu)
+static void bx(arm7tdmi *cpu, uint32_t inst)
 {
-    if (!check_cond(cpu))
-        return;
-
-    arm_register rn = cpu->pipeline[0] & 0xf;
+    arm_register rn = inst & 0xf;
     uint32_t addr = cpu->registers[rn];
 
     if (addr & 1) // THUMB state
@@ -252,12 +249,8 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
     return shifter_carry;
 }
 
-static void process_data(arm7tdmi *cpu)
+static void process_data(arm7tdmi *cpu, uint32_t inst)
 {
-    if (!check_cond(cpu))
-        return;
-
-    uint32_t inst = cpu->pipeline[0];
     bool set_conds = inst & (1 << 20);
     uint8_t opcode = (inst >> 21) & 0xf;
 
@@ -338,11 +331,19 @@ static inline void panic_illegal_instruction(uint32_t inst)
 
 void decode_and_execute_arm(arm7tdmi *cpu)
 {
+    uint32_t inst = cpu->pipeline[0];
+     // all instructions can be conditionally executed
+    if (!check_cond(cpu, inst))
+    {
+        // instruction takes on sequential cycle to prefetch
+        prefetch(cpu);
+        return;
+    }
+
     // decoding is going to involve a lot of magic numbers
     // See references in `README.md` for encoding documentation
-    uint32_t inst = cpu->pipeline[0];
     if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
-        bx(cpu);
+        bx(cpu, inst);
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
         goto unimplemented;
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
@@ -366,7 +367,7 @@ void decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
         goto unimplemented;
     else if ((inst & 0x0c000000) == 0x00000000) // data processing
-        process_data(cpu);
+        process_data(cpu, inst);
     else
         panic_illegal_instruction(inst);
 
