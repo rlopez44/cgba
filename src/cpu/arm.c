@@ -70,7 +70,7 @@ static void restore_cpsr(arm7tdmi *cpu)
     arm_bankmode mode;
     switch (cpu->cpsr & 0x1f)
     {
-        case 0x10: // user mode, should not get here
+        case 0x10: // user mode, nothing to restore
         case 0x1f: // system mode (= privileged user mode)
             mode = BANK_NONE;
             break;
@@ -262,13 +262,40 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
                       || opcode == 0x9
                       || opcode >= 0xc;
 
+    bool write_result = opcode <= 0x7 || opcode >= 0xc;
+
     uint32_t result, op2;
     bool shifter_carry = barrel_shift(cpu, inst, &op2);
 
+    // operand1 is read after shifting is performed
+    uint32_t op1 = cpu->registers[rn];
+
     switch (opcode)
     {
+        case 0x0: // AND
+        case 0x8: // TST
+            result = op1 & op2;
+            break;
+
+        case 0x1: // EOR
+        case 0x9: // TEQ
+            result = op1 ^ op2;
+            break;
+
+        case 0xc: // ORR
+            result = op1 | op2;
+            break;
+
         case 0xd: // MOV
             result = op2;
+            break;
+
+        case 0xe: // BIC
+            result = op1 & ~op2;
+            break;
+
+        case 0xf: // MVN
+            result = ~op2;
             break;
 
         default: // temporary, unimplemented opcodes
@@ -298,22 +325,19 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
         }
     }
 
-    // apply result
-    if (opcode <= 0x7 || opcode >= 0xc) // opcodes that write result
-    {
+    if (write_result)
         cpu->registers[rd] = result;
 
-        if (rd == R15) // changing R15 -> pipeline flush
-        {
-            if (set_conds) // mode change
-                restore_cpsr(cpu);
-
-            reload_pipeline(cpu);
-        }
-    }
-    else
+    // mode change and possible pipeline flush
+    if (rd == R15)
     {
-        // TODO: TST, TEQ, CMP, and CMN
+        // always true for TST, TEQ, CMP, and CMN
+        if (set_conds)
+            restore_cpsr(cpu);
+
+        // TST, TEQ, CMP, and CMN don't flush the pipeline
+        if (write_result)
+            reload_pipeline(cpu);
     }
 
     return;
