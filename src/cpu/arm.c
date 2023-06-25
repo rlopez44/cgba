@@ -263,6 +263,7 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
                       || opcode >= 0xc;
 
     bool write_result = opcode <= 0x7 || opcode >= 0xc;
+    bool carry_flag = cpu->cpsr & COND_C_BITMASK;
 
     uint32_t result, op2;
     bool shifter_carry = barrel_shift(cpu, inst, &op2);
@@ -270,6 +271,7 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
     // operand1 is read after shifting is performed
     uint32_t op1 = cpu->registers[rn];
 
+    bool op_carry, op_overflow; // only used by arithmetic operations
     switch (opcode)
     {
         case 0x0: // AND
@@ -280,6 +282,50 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
         case 0x1: // EOR
         case 0x9: // TEQ
             result = op1 ^ op2;
+            break;
+
+        case 0x2: // SUB
+        case 0xa: // CMP
+            result = op1 - op2;
+            op_carry = op1 >= op2; // set if no borrow
+            // overflow into bit 31
+            op_overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x3: // RSB
+            result = op2 - op1;
+            op_carry = op2 >= op1;
+            op_overflow = (((op2 ^ op1) & (op2 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x4: // ADD
+        case 0xb: // CMN
+            result = op1 + op2;
+            op_carry = op2 > UINT32_MAX - op1;
+            op_overflow = ((~(op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x5: // ADC
+            result = op1 + op2 + carry_flag;
+            // if op1 + op2 doesn't overflow, then check if
+            // adding the carry flag causes an overflow
+            op_carry = op2 > UINT32_MAX - op1
+                       || op1 + op2 > UINT32_MAX - carry_flag;
+            op_overflow = ((~(op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x6: // SBC
+            result = op1 - op2 + carry_flag - 1;
+            // if op1 - op2 doesn't borrow, then check if
+            // subtracting 1 - carry_flag also doesn't borrow
+            op_carry = op1 >= op2 && op1 - op2 >= 1 - carry_flag;
+            op_overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x7: // RSC
+            result = op2 - op1 + carry_flag - 1;
+            op_carry = op2 >= op1 && op2 - op1 >= 1 - carry_flag;
+            op_overflow = (((op2 ^ op1) & (op2 ^ result)) >> 31) & 1;
             break;
 
         case 0xc: // ORR
@@ -297,9 +343,6 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
         case 0xf: // MVN
             result = ~op2;
             break;
-
-        default: // temporary, unimplemented opcodes
-            goto unimplemented;
     }
 
     // if we didn't shift by register, then we're still in the
@@ -310,19 +353,19 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
     // set flags if needed
     if (set_conds)
     {
+        // flag order:  N  Z  C  V
+        //        bit: 31 30 29 28
         if (logical_op)
-        {
-            // flag order:  N  Z  C  V
-            //        bit: 31 30 29 28
             cpu->cpsr = (cpu->cpsr & 0x1fffffff)
                         | (result & (1 << 31))
-                        | (!result << 30)
-                        | (shifter_carry << 29);
-        }
+                        | (!result << COND_Z_SHIFT)
+                        | (shifter_carry << COND_C_SHIFT);
         else
-        {
-            //TODO: arithmetic operations
-        }
+            cpu->cpsr = (cpu->cpsr & 0x0fffffff)
+                        | (result & (1 << 31))
+                        | (!result << COND_Z_SHIFT)
+                        | (op_carry << COND_C_SHIFT)
+                        | (op_overflow << COND_V_SHIFT);
     }
 
     if (write_result)
@@ -339,12 +382,6 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
         if (write_result)
             reload_pipeline(cpu);
     }
-
-    return;
-
-unimplemented:
-    fprintf(stderr, "Unimplemented data processing instruction. Opcode: %X\n", opcode);
-    exit(1);
 }
 
 static inline void panic_illegal_instruction(uint32_t inst)
