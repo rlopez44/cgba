@@ -65,7 +65,7 @@ static void prefetch(arm7tdmi *cpu)
     cpu->registers[R15] += 4;
 }
 
-static void restore_cpsr(arm7tdmi *cpu)
+static arm_bankmode get_current_mode(arm7tdmi *cpu)
 {
     arm_bankmode mode;
     switch (cpu->cpsr & 0x1f)
@@ -88,6 +88,12 @@ static void restore_cpsr(arm7tdmi *cpu)
             exit(1);
     }
 
+    return mode;
+}
+
+static void restore_cpsr(arm7tdmi *cpu)
+{
+    arm_bankmode mode = get_current_mode(cpu);
     if (mode != BANK_NONE)
         cpu->cpsr = cpu->spsr[mode];
 }
@@ -249,6 +255,32 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
     return shifter_carry;
 }
 
+static void branch(arm7tdmi *cpu, uint32_t inst)
+{
+    // instruction contains signed 2's complement 24-bit offset
+    uint32_t offset = inst & 0x00ffffff;
+
+    if (offset & (1 << 23))
+        offset |= 0xff000000;
+
+    offset <<= 2;
+
+    if (inst & (1 << 24)) // branch w/link
+    {
+        // point to instruction following the branch, R14[1:0] always cleared
+        uint32_t old_pc = (cpu->registers[R15] - 4) & ~0x3;
+
+        arm_bankmode mode = get_current_mode(cpu);
+        if (mode == BANK_NONE)
+            cpu->registers[R14] = old_pc;
+        else
+            cpu->banked_registers[mode][BANK_R14] = old_pc;
+    }
+
+    cpu->registers[R15] += offset;
+    reload_pipeline(cpu);
+}
+
 static void process_data(arm7tdmi *cpu, uint32_t inst)
 {
     bool set_conds = inst & (1 << 20);
@@ -408,7 +440,7 @@ void decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
         goto unimplemented;
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
-        goto unimplemented;
+        branch(cpu, inst);
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
         goto unimplemented;
     else if ((inst & 0x0e000010) == 0x06000010) // undefined
