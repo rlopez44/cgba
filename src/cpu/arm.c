@@ -98,6 +98,12 @@ static void restore_cpsr(arm7tdmi *cpu)
         cpu->cpsr = cpu->spsr[mode];
 }
 
+static inline void panic_illegal_instruction(uint32_t inst)
+{
+    fprintf(stderr, "Error: Illegal instruction encountered: %08X\n", inst);
+    exit(1);
+}
+
 static void bx(arm7tdmi *cpu, uint32_t inst)
 {
     arm_register rn = inst & 0xf;
@@ -416,10 +422,54 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
     }
 }
 
-static inline void panic_illegal_instruction(uint32_t inst)
+static void halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
 {
-    fprintf(stderr, "Error: Illegal instruction encountered: %08X\n", inst);
-    exit(1);
+    bool preindex = inst & (1 << 24);
+    bool add_offset = inst & (1 << 23);
+    bool write_back = inst & (1 << 21);
+    bool load = inst & (1 << 20);
+    bool signed_ = inst & (1 << 6);
+    bool halfword = inst & (1 << 5);
+
+    arm_register rn = (inst >> 16) & 0xf;
+    arm_register rd = (inst >> 12) & 0xf;
+
+    uint8_t offset = ((inst >> 4) & 0xf0) | (inst & 0xf);
+    uint32_t transfer_addr = cpu->registers[rn];
+
+    if (preindex)
+    {
+        if (add_offset)
+            transfer_addr += offset;
+        else
+            transfer_addr -= offset;
+    }
+
+    prefetch(cpu); // prefetch occurs before the load/store
+
+    if (load)
+    {
+        // will use once loads implemented
+        (void)signed_;
+        (void)halfword;
+        fputs("Error: LDR instructions not yet implemented\n", stderr);
+        exit(1);
+    }
+    else // store: only one instruction: STRH (S=0, H=1)
+    {
+        write_halfword(cpu->mem, transfer_addr, cpu->registers[rd]);
+    }
+
+    // write back to base register if needed
+    // post-index transfers always write back
+    if (write_back || !preindex)
+    {
+        if (add_offset)
+            cpu->registers[rn] = transfer_addr + offset;
+        else
+            cpu->registers[rn] = transfer_addr - offset;
+    }
+
 }
 
 void decode_and_execute_arm(arm7tdmi *cpu)
@@ -454,7 +504,7 @@ void decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
         goto unimplemented;
     else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
-        goto unimplemented;
+        halfword_transfer_immediate(cpu, inst);
     else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
         goto unimplemented;
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR

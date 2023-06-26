@@ -32,6 +32,12 @@ uint8_t read_byte(gba_mem *mem, uint32_t addr)
     return mem->mmap[addr];
 }
 
+void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val)
+{
+    mem->mmap[addr + 0] = val;
+    mem->mmap[addr + 1] = val >> 8;
+}
+
 gba_mem *init_memory(void)
 {
     gba_mem *mem = malloc(sizeof(gba_mem));
