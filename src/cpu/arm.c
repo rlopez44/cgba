@@ -350,13 +350,13 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
             result = op1 - op2 + carry_flag - 1;
             // if op1 - op2 doesn't borrow, then check if
             // subtracting 1 - carry_flag also doesn't borrow
-            op_carry = op1 >= op2 && op1 - op2 >= 1 - carry_flag;
+            op_carry = op1 >= op2 && op1 - op2 >= 1u - carry_flag;
             op_overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
             break;
 
         case 0x7: // RSC
             result = op2 - op1 + carry_flag - 1;
-            op_carry = op2 >= op1 && op2 - op1 >= 1 - carry_flag;
+            op_carry = op2 >= op1 && op2 - op1 >= 1u - carry_flag;
             op_overflow = (((op2 ^ op1) & (op2 ^ result)) >> 31) & 1;
             break;
 
