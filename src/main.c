@@ -1,29 +1,48 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
+
+typedef struct gba_system {
+    arm7tdmi *cpu;
+    gba_mem *mem;
+} gba_system;
+
+static void init_system_or_die(gba_system *gba)
+{
+    gba->mem = init_memory();
+    if (gba->mem == NULL)
+    {
+        fputs("Failed to allocate GBA memory\n", stderr);
+        exit(1);
+    }
+
+    gba->cpu = init_cpu(gba->mem);
+    if (gba->cpu == NULL)
+    {
+        fputs("Failed to allocate ARM7TDMI\n", stderr);
+        exit(1);
+    }
+
+}
+
+static void deinit_system(gba_system *gba)
+{
+    deinit_memory(gba->mem);
+    deinit_cpu(gba->cpu);
+}
 
 int main(void)
 {
     printf("CGBA: A Game Boy Advance Emulator\n"
            "---------------------------------\n");
 
-    gba_mem *mem = init_memory();
-    if (mem == NULL)
-    {
-        printf("Failed to allocate memory for ARM7TDMI\n");
-        return 1;
-    }
+    gba_system gba;
+    init_system_or_die(&gba);
 
-    arm7tdmi *cpu = init_cpu(mem);
-    if (cpu == NULL)
-    {
-        printf("Failed to allocate ARM7TDMI\n");
-        return 1;
-    }
+    puts("GBA system initialized. Exiting...\n");
 
-    printf("ARM7TDMI allocated using %zu bytes\n", sizeof(arm7tdmi));
-    deinit_memory(cpu->mem);
-    deinit_cpu(cpu);
+    deinit_system(&gba);
 
     return 0;
 }
