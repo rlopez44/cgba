@@ -1,4 +1,6 @@
+#include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "cgba/memory.h"
@@ -89,13 +91,37 @@ void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val)
     byte_to_mmap(mem, addr + 1, val >> 8);
 }
 
-gba_mem *init_memory(void)
+static size_t load_rom_or_die(gba_mem *mem, const char *romfile)
+{
+    FILE *fptr = fopen(romfile, "rb");
+    if (fptr == NULL)
+        goto open_error;
+
+    size_t max_rom_size = sizeof mem->pak_rom;
+    size_t bytes_read = fread(mem->pak_rom, 1, max_rom_size, fptr);
+
+    if (bytes_read != max_rom_size && ferror(fptr))
+        goto load_error;
+
+    fclose(fptr);
+    return bytes_read;
+
+load_error:
+    fclose(fptr);
+open_error:
+    perror("Error loading ROM");
+    exit(1);
+}
+
+gba_mem *init_memory(const char *romfile)
 {
     gba_mem *mem = malloc(sizeof(gba_mem));
     if (mem == NULL)
         return NULL;
 
     memset(mem, 0, sizeof(gba_mem));
+    load_rom_or_die(mem, romfile);
+
     return mem;
 }
 

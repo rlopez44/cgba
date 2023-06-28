@@ -26,7 +26,7 @@ uint8_t read_byte(gba_mem *mem, uint32_t addr);
 
 void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val);
 
-gba_mem *init_memory(void);
+gba_mem *init_memory(const char *romfile);
 void deinit_memory(gba_mem *mem);
 
 #endif /* CGBA_MEMORY_H */
