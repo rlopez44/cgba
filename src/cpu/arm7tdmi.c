@@ -11,14 +11,14 @@ void reload_pipeline(arm7tdmi *cpu)
     bool thumb = cpu->cpsr & T_BITMASK;
     if (thumb)
     {
-        cpu->pipeline[0] = read_halfword(cpu->mem, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_halfword(cpu->mem, cpu->registers[R15] + 2);
+        cpu->pipeline[0] = read_halfword(cpu, cpu->registers[R15] + 0);
+        cpu->pipeline[1] = read_halfword(cpu, cpu->registers[R15] + 2);
         cpu->registers[R15] += 4;
     }
     else
     {
-        cpu->pipeline[0] = read_word(cpu->mem, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15] + 4);
+        cpu->pipeline[0] = read_word(cpu, cpu->registers[R15] + 0);
+        cpu->pipeline[1] = read_word(cpu, cpu->registers[R15] + 4);
         cpu->registers[R15] += 8;
     }
 }

@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
-#include "cgba/memory.h"
 
 #define COND_N_SHIFT 31
 #define COND_Z_SHIFT 30
@@ -61,7 +60,7 @@ static bool check_cond(arm7tdmi *cpu, uint32_t inst)
 static void prefetch(arm7tdmi *cpu)
 {
     cpu->pipeline[0] = cpu->pipeline[1];
-    cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15]);
+    cpu->pipeline[1] = read_word(cpu, cpu->registers[R15]);
     cpu->registers[R15] += 4;
 }
 
@@ -457,7 +456,7 @@ static void halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
     }
     else // store: only one instruction: STRH (S=0, H=1)
     {
-        write_halfword(cpu->mem, transfer_addr, cpu->registers[rd]);
+        write_halfword(cpu, transfer_addr, cpu->registers[rd]);
     }
 
     // write back to base register if needed

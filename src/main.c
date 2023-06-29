@@ -68,7 +68,7 @@ int main(int argc, const char **argv)
 
     printf("ROM file: %s\n", argv[1]);
     init_system_or_die(&gba, argv[1]);
-    report_rom_info(gba.mem->pak_rom);
+    report_rom_info(gba.mem->rom);
     puts("GBA system initialized. Exiting...");
     deinit_system(&gba);
 
