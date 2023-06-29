@@ -8,13 +8,25 @@
 #define ARM_NUM_BANKED_REGISTERS 7
 #define ARM_NUM_REGISTERS 16
 
+#define CPU_MODE_MASK 0xffffffe0
+
+typedef enum arm_cpu_mode {
+    MODE_USR = 0x10,
+    MODE_FIQ = 0x11,
+    MODE_IRQ = 0x12,
+    MODE_SVC = 0x13,
+    MODE_ABT = 0x17,
+    MODE_UND = 0x1b,
+    MODE_SYS = 0x1f, // privileged user mode
+} arm_cpu_mode;
+
 typedef enum arm_bankmode {
     BANK_FIQ,
     BANK_SVC,
     BANK_ABT,
     BANK_IRQ,
     BANK_UND,
-    BANK_NONE, // user mode; no banked registers
+    BANK_NONE, // user/system mode; no banked registers
 } arm_bankmode;
 
 typedef enum arm_register {
@@ -37,6 +49,7 @@ typedef enum arm_register {
 } arm_register;
 
 typedef enum arm_bank_register {
+    // bank R8 - R12 used only by FIQ
     BANK_R8,
     BANK_R9,
     BANK_R10,
@@ -67,5 +80,10 @@ void deinit_cpu(arm7tdmi *cpu);
 
 /* Run the CPU for one instruction */
 void run_cpu(arm7tdmi *cpu);
+
+/* Set the CPU state to what it would be when
+ * the BIOS finishes running on boot up
+ */
+void skip_boot_screen(arm7tdmi *cpu);
 
 #endif /* CGBA_CPU_H */

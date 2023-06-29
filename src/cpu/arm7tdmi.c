@@ -23,6 +23,16 @@ void reload_pipeline(arm7tdmi *cpu)
     }
 }
 
+void skip_boot_screen(arm7tdmi *cpu)
+{
+    cpu->cpsr = (cpu->cpsr & CPU_MODE_MASK) | MODE_SYS;
+    cpu->banked_registers[BANK_SVC][BANK_R13] = 0x03007fe0;
+    cpu->banked_registers[BANK_IRQ][BANK_R13] = 0x03007fa0;
+    cpu->registers[R13] = 0x03007f00;
+    cpu->registers[R15] = 0x08000000;
+    reload_pipeline(cpu);
+}
+
 static void decode_and_execute(arm7tdmi *cpu)
 {
     if (cpu->cpsr & T_BITMASK)
@@ -55,7 +65,8 @@ static void reset_cpu(arm7tdmi *cpu)
     // reset is not defined by the architecture
     cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R14];
     cpu->spsr[BANK_SVC] = cpu->cpsr;
-    cpu->cpsr = (cpu->cpsr & ~0xff) | 0xd3;
+    cpu->cpsr = (cpu->cpsr & CPU_MODE_MASK) | MODE_SVC;
+    cpu->cpsr = (cpu->cpsr & ~0xe0) | 0xc0;
     cpu->registers[R14] = 0x0;
 
     // to simplify things, we'll also use a few more cycles

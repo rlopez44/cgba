@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,10 +8,12 @@
 typedef struct gba_system {
     arm7tdmi *cpu;
     gba_mem *mem;
+    bool skip_bios;
 } gba_system;
 
 static void init_system_or_die(gba_system *gba, const char *romfile)
 {
+    gba->skip_bios = true; // hardcoded until bios implemented
     gba->mem = init_memory(romfile);
     if (gba->mem == NULL)
     {
@@ -25,6 +28,8 @@ static void init_system_or_die(gba_system *gba, const char *romfile)
         exit(1);
     }
 
+    if (gba->skip_bios)
+        skip_boot_screen(gba->cpu);
 }
 
 static void deinit_system(gba_system *gba)
