@@ -130,7 +130,6 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
 {
     bool shifter_carry = false;
     bool imm = inst & (1 << 25);
-    bool shift_by_r = inst & (1 << 4); // shift by amount specified in a register
 
     uint8_t shift_amt;
     uint32_t op2;
@@ -151,6 +150,8 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
     }
     else // shift register
     {
+        bool shift_by_r = inst & (1 << 4); // shift by amount specified in a register
+
         // shifting by register -> bottom byte of Rs specifies shift amount
         shift_amt = shift_by_r
                     ? cpu->registers[(inst >> 8) & 0xf] & 0xff
@@ -382,9 +383,9 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
             break;
     }
 
-    // if we didn't shift by register, then we're still in the
-    // first cycle at this point and prefetch has yet to occur
-    if (!(inst & (1 << 4)))
+    // if we didn't shift register by register, then we're still in
+    // the first cycle at this point and prefetch has yet to occur
+    if (inst & (1 << 25) || !(inst & (1 << 4)))
         prefetch(cpu);
 
     // set flags if needed
