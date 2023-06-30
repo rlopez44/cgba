@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "cgba/cpu.h"
+#include "cgba/log.h"
 #include "cgba/memory.h"
 #include "arm7tdmi.h"
 
@@ -49,6 +50,9 @@ static void decode_and_execute(arm7tdmi *cpu)
 
 void run_cpu(arm7tdmi *cpu)
 {
+#ifdef DEBUG
+    log_cpu_state(cpu, stdout);
+#endif
     decode_and_execute(cpu);
 }
 

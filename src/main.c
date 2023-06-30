@@ -38,6 +38,14 @@ static void deinit_system(gba_system *gba)
     deinit_cpu(gba->cpu);
 }
 
+static void run_system(gba_system *gba)
+{
+    while (true)
+    {
+        run_cpu(gba->cpu);
+    }
+}
+
 static void report_rom_info(uint8_t *rom)
 {
     char title[13] = {0};
@@ -74,7 +82,7 @@ int main(int argc, const char **argv)
     printf("ROM file: %s\n", argv[1]);
     init_system_or_die(&gba, argv[1]);
     report_rom_info(gba.mem->rom);
-    puts("GBA system initialized. Exiting...");
+    run_system(&gba);
     deinit_system(&gba);
 
     return 0;
