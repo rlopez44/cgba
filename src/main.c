@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,12 +9,14 @@
 typedef struct gba_system {
     arm7tdmi *cpu;
     gba_mem *mem;
+    uint64_t clocks_emulated;
     bool skip_bios;
 } gba_system;
 
 static void init_system_or_die(gba_system *gba, const char *romfile)
 {
     gba->skip_bios = true; // hardcoded until bios implemented
+    gba->clocks_emulated = 0;
     gba->mem = init_memory(romfile);
     if (gba->mem == NULL)
     {
@@ -42,7 +45,7 @@ static void run_system(gba_system *gba)
 {
     while (true)
     {
-        run_cpu(gba->cpu);
+        gba->clocks_emulated += run_cpu(gba->cpu);
     }
 }
 

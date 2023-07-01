@@ -34,8 +34,9 @@ void skip_boot_screen(arm7tdmi *cpu)
     reload_pipeline(cpu);
 }
 
-static void decode_and_execute(arm7tdmi *cpu)
+static int decode_and_execute(arm7tdmi *cpu)
 {
+    int num_clocks;
     if (cpu->cpsr & T_BITMASK)
     {
         // TODO: thumb support
@@ -44,16 +45,18 @@ static void decode_and_execute(arm7tdmi *cpu)
     }
     else
     {
-        decode_and_execute_arm(cpu);
+        num_clocks = decode_and_execute_arm(cpu);
     }
+
+    return num_clocks;
 }
 
-void run_cpu(arm7tdmi *cpu)
+int run_cpu(arm7tdmi *cpu)
 {
 #ifdef DEBUG
     log_cpu_state(cpu, stdout);
 #endif
-    decode_and_execute(cpu);
+    return decode_and_execute(cpu);
 }
 
 /* Reset the CPU by performing the following:

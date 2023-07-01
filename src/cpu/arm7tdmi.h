@@ -7,6 +7,6 @@
 
 void reload_pipeline(arm7tdmi *cpu);
 
-void decode_and_execute_arm(arm7tdmi *cpu);
+int decode_and_execute_arm(arm7tdmi *cpu);
 
 #endif /* CGBA_ARM7TDMI_H */

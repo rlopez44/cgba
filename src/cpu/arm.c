@@ -103,7 +103,7 @@ static inline void panic_illegal_instruction(uint32_t inst)
     exit(1);
 }
 
-static void bx(arm7tdmi *cpu, uint32_t inst)
+static int bx(arm7tdmi *cpu, uint32_t inst)
 {
     arm_register rn = inst & 0xf;
     uint32_t addr = cpu->registers[rn];
@@ -123,6 +123,9 @@ static void bx(arm7tdmi *cpu, uint32_t inst)
 
     // BX causes a pipeline flush and refill from [Rn]
     reload_pipeline(cpu);
+
+    // 2S + 1N cycles
+    return 3;
 }
 
 // perform barrel shifter operation and return the shifter's carry out
@@ -261,7 +264,7 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
     return shifter_carry;
 }
 
-static void branch(arm7tdmi *cpu, uint32_t inst)
+static int branch(arm7tdmi *cpu, uint32_t inst)
 {
     // instruction contains signed 2's complement 24-bit offset
     uint32_t offset = inst & 0x00ffffff;
@@ -285,10 +288,14 @@ static void branch(arm7tdmi *cpu, uint32_t inst)
 
     cpu->registers[R15] += offset;
     reload_pipeline(cpu);
+
+    // 2S + 1N cycles
+    return 3;
 }
 
-static void process_data(arm7tdmi *cpu, uint32_t inst)
+static int process_data(arm7tdmi *cpu, uint32_t inst)
 {
+    int num_clocks;
     bool set_conds = inst & (1 << 20);
     uint8_t opcode = (inst >> 21) & 0xf;
 
@@ -299,6 +306,9 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
                       || opcode == 0x8
                       || opcode == 0x9
                       || opcode >= 0xc;
+
+    // register specified shift
+    bool shift_by_r = !(inst & (1 << 25)) && (inst & (1 << 4));
 
     bool write_result = opcode <= 0x7 || opcode >= 0xc;
     bool carry_flag = cpu->cpsr & COND_C_BITMASK;
@@ -385,7 +395,7 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
 
     // if we didn't shift register by register, then we're still in
     // the first cycle at this point and prefetch has yet to occur
-    if (inst & (1 << 25) || !(inst & (1 << 4)))
+    if (!shift_by_r)
         prefetch(cpu);
 
     // set flags if needed
@@ -420,10 +430,22 @@ static void process_data(arm7tdmi *cpu, uint32_t inst)
         if (write_result)
             reload_pipeline(cpu);
     }
+
+    if (rd == R15 && write_result && shift_by_r)
+        num_clocks = 4; // 2S + 1N + 1I
+    else if (rd == R15 && write_result)
+        num_clocks = 3; // 2S + 1N
+    else if (shift_by_r)
+        num_clocks = 2; // 1S + 1I
+    else
+        num_clocks = 1; // 1S
+
+    return num_clocks;
 }
 
-static void halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
+static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
 {
+    int num_clocks;
     bool preindex = inst & (1 << 24);
     bool add_offset = inst & (1 << 23);
     bool write_back = inst & (1 << 21);
@@ -457,6 +479,7 @@ static void halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
     }
     else // store: only one instruction: STRH (S=0, H=1)
     {
+        num_clocks = 2; // 2N cycles
         write_halfword(cpu, transfer_addr, cpu->registers[rd]);
     }
 
@@ -470,9 +493,10 @@ static void halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
             cpu->registers[rn] = transfer_addr - offset;
     }
 
+    return num_clocks;
 }
 
-void decode_and_execute_arm(arm7tdmi *cpu)
+int decode_and_execute_arm(arm7tdmi *cpu)
 {
     uint32_t inst = cpu->pipeline[0];
      // all instructions can be conditionally executed
@@ -480,17 +504,18 @@ void decode_and_execute_arm(arm7tdmi *cpu)
     {
         // instruction takes on sequential cycle to prefetch
         prefetch(cpu);
-        return;
+        return 1;
     }
 
     // decoding is going to involve a lot of magic numbers
     // See references in `README.md` for encoding documentation
+    int num_clocks = 0;
     if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
-        bx(cpu, inst);
+        num_clocks = bx(cpu, inst);
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
         goto unimplemented;
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
-        branch(cpu, inst);
+        num_clocks = branch(cpu, inst);
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
         goto unimplemented;
     else if ((inst & 0x0e000010) == 0x06000010) // undefined
@@ -504,17 +529,17 @@ void decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
         goto unimplemented;
     else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
-        halfword_transfer_immediate(cpu, inst);
+        num_clocks = halfword_transfer_immediate(cpu, inst);
     else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
         goto unimplemented;
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
         goto unimplemented;
     else if ((inst & 0x0c000000) == 0x00000000) // data processing
-        process_data(cpu, inst);
+        num_clocks = process_data(cpu, inst);
     else
         panic_illegal_instruction(inst);
 
-    return;
+    return num_clocks;
 
 // temporary until all instructions are implemented
 unimplemented:
