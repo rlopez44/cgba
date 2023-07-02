@@ -60,7 +60,7 @@ static bool check_cond(arm7tdmi *cpu, uint32_t inst)
 static void prefetch(arm7tdmi *cpu)
 {
     cpu->pipeline[0] = cpu->pipeline[1];
-    cpu->pipeline[1] = read_word(cpu, cpu->registers[R15]);
+    cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15]);
     cpu->registers[R15] += 4;
 }
 
@@ -480,7 +480,7 @@ static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
     else // store: only one instruction: STRH (S=0, H=1)
     {
         num_clocks = 2; // 2N cycles
-        write_halfword(cpu, transfer_addr, cpu->registers[rd]);
+        write_halfword(cpu->mem, transfer_addr, cpu->registers[rd]);
     }
 
     // write back to base register if needed

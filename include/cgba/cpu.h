@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include "cgba/memory.h"
 
+/* 4 times the GB CPU frequency */
+#define GBA_CPU_FREQ 16777216
+
 #define ARM_NUM_BANKS 5
 #define ARM_NUM_BANKED_REGISTERS 7
 #define ARM_NUM_REGISTERS 16
@@ -73,10 +76,19 @@ typedef struct arm7tdmi {
 
 
 /* Create and initialize the ARM7TDMI CPU */
-arm7tdmi *init_cpu(gba_mem *mem);
+arm7tdmi *init_cpu(void);
 
 /* Free memory allocated for the CPU */
 void deinit_cpu(arm7tdmi *cpu);
+
+/* Reset the CPU by performing the following:
+ *
+ * - store PC and CPSR into R14_svc and SPSR_svc
+ * - in CPSR: force M[4:0] to 10011 (supervisor mode),
+ *   set I, set F, and reset T (change CPU state to ARM)
+ * - force PC to fetch from address 0x00
+ */
+void reset_cpu(arm7tdmi *cpu);
 
 /* Run the CPU for one instruction
  * Returning number of cycles required

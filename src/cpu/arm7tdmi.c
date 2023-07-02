@@ -12,14 +12,14 @@ void reload_pipeline(arm7tdmi *cpu)
     bool thumb = cpu->cpsr & T_BITMASK;
     if (thumb)
     {
-        cpu->pipeline[0] = read_halfword(cpu, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_halfword(cpu, cpu->registers[R15] + 2);
+        cpu->pipeline[0] = read_halfword(cpu->mem, cpu->registers[R15] + 0);
+        cpu->pipeline[1] = read_halfword(cpu->mem, cpu->registers[R15] + 2);
         cpu->registers[R15] += 4;
     }
     else
     {
-        cpu->pipeline[0] = read_word(cpu, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_word(cpu, cpu->registers[R15] + 4);
+        cpu->pipeline[0] = read_word(cpu->mem, cpu->registers[R15] + 0);
+        cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15] + 4);
         cpu->registers[R15] += 8;
     }
 }
@@ -59,14 +59,7 @@ int run_cpu(arm7tdmi *cpu)
     return decode_and_execute(cpu);
 }
 
-/* Reset the CPU by performing the following:
- *
- * - store PC and CPSR into R14_svc and SPSR_svc
- * - in CPSR: force M[4:0] to 10011 (supervisor mode),
- *   set I, set F, and reset T (change CPU state to ARM)
- * - force PC to fetch from address 0x00
- */
-static void reset_cpu(arm7tdmi *cpu)
+void reset_cpu(arm7tdmi *cpu)
 {
     // NOTE: the value of PC and CPSR saved on
     // reset is not defined by the architecture
@@ -82,7 +75,7 @@ static void reset_cpu(arm7tdmi *cpu)
     reload_pipeline(cpu);
 }
 
-arm7tdmi *init_cpu(gba_mem *mem)
+arm7tdmi *init_cpu(void)
 {
     arm7tdmi *cpu = malloc(sizeof(arm7tdmi));
     if (cpu == NULL)
@@ -101,8 +94,6 @@ arm7tdmi *init_cpu(gba_mem *mem)
             cpu->banked_registers[i][j] = 0;
     }
 
-    cpu->mem = mem;
-    reset_cpu(cpu);
     return cpu;
 }
 

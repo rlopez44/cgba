@@ -24,12 +24,18 @@ static void init_system_or_die(gba_system *gba, const char *romfile)
         exit(1);
     }
 
-    gba->cpu = init_cpu(gba->mem);
+    gba->cpu = init_cpu();
     if (gba->cpu == NULL)
     {
         fputs("Failed to allocate ARM7TDMI\n", stderr);
         exit(1);
     }
+
+    // two-way connection between CPU and memory
+    gba->cpu->mem = gba->mem;
+    gba->mem->cpu = gba->cpu;
+
+    reset_cpu(gba->cpu);
 
     if (gba->skip_bios)
         skip_boot_screen(gba->cpu);
@@ -43,7 +49,8 @@ static void deinit_system(gba_system *gba)
 
 static void run_system(gba_system *gba)
 {
-    while (true)
+    // emulate one second until we implement a basic PPU
+    while (gba->clocks_emulated <= GBA_CPU_FREQ)
     {
         gba->clocks_emulated += run_cpu(gba->cpu);
     }

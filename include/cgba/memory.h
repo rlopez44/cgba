@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+typedef struct arm7tdmi arm7tdmi;
+
 typedef struct gba_mem {
     // general internal memory
     uint8_t bios[0x4000];
@@ -18,15 +20,15 @@ typedef struct gba_mem {
     // game pak
     uint8_t rom[0x2000000];
     uint8_t sram[0x10000];
+
+    arm7tdmi *cpu;
 } gba_mem;
 
-typedef struct arm7tdmi arm7tdmi;
+uint32_t read_word(gba_mem *mem, uint32_t addr);
+uint16_t read_halfword(gba_mem *mem, uint32_t addr);
+uint8_t read_byte(gba_mem *mem, uint32_t addr);
 
-uint32_t read_word(arm7tdmi *cpu, uint32_t addr);
-uint16_t read_halfword(arm7tdmi *cpu, uint32_t addr);
-uint8_t read_byte(arm7tdmi *cpu, uint32_t addr);
-
-void write_halfword(arm7tdmi *cpu, uint32_t addr, uint16_t val);
+void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val);
 
 gba_mem *init_memory(const char *romfile);
 void deinit_memory(gba_mem *mem);
