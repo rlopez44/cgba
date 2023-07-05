@@ -1,0 +1,197 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "SDL_render.h"
+#include "SDL_video.h"
+#include "cgba/memory.h"
+#include "cgba/ppu.h"
+#include "SDL.h"
+
+#define WINDOW_SCALE 3
+#define CLOCKS_PER_DOT 4
+
+#define HBLANK_START (CLOCKS_PER_DOT*240)
+#define SCANLINE_END (CLOCKS_PER_DOT*308)
+
+#define VBLANK_START  160 /* scanline start for vblank */
+#define VBLANK_END    227 /* scanline end for vblank */
+#define NUM_SCANLINES 228
+
+/* ARGB8888 */
+#define WHITE 0xffffffff
+
+gba_ppu *init_ppu(void)
+{
+    gba_ppu *ppu = malloc(sizeof(gba_ppu));
+    if (ppu == NULL)
+        return NULL;
+
+    ppu->dispcnt = 0x0080; // force blank -> all white lines drawn
+    ppu->dispstat = 0;
+    ppu->vcount = 0;
+    ppu->scanline_clock = 0;
+    ppu->curr_frame_rendered = false;
+
+    // white screen on startup
+    for (size_t i = 0; i < FRAME_WIDTH * FRAME_HEIGHT; ++i)
+        ppu->frame_buffer[i] = WHITE;
+
+    return ppu;
+}
+
+void deinit_ppu(gba_ppu *ppu)
+{
+    if (ppu->screen != NULL)
+        SDL_DestroyTexture(ppu->screen);
+
+    if (ppu->renderer != NULL)
+        SDL_DestroyRenderer(ppu->renderer);
+
+    if (ppu->window != NULL)
+        SDL_DestroyWindow(ppu->window);
+
+    free(ppu);
+}
+
+void init_screen_or_die(gba_ppu *ppu)
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+        goto init_error;
+
+    ppu->window = SDL_CreateWindow("CGBA -- A Game Boy Advance Emulator",
+                                   SDL_WINDOWPOS_UNDEFINED,
+                                   SDL_WINDOWPOS_UNDEFINED,
+                                   WINDOW_SCALE * FRAME_WIDTH,
+                                   WINDOW_SCALE * FRAME_HEIGHT,
+                                   SDL_WINDOW_OPENGL);
+
+    if (ppu->window == NULL)
+        goto init_error;
+
+    ppu->renderer = SDL_CreateRenderer(ppu->window, -1, 0);
+
+    if (ppu->renderer == NULL)
+        goto init_error;
+
+    ppu->screen = SDL_CreateTexture(ppu->renderer,
+                                    SDL_PIXELFORMAT_ARGB8888,
+                                    SDL_TEXTUREACCESS_STREAMING,
+                                    FRAME_WIDTH,
+                                    FRAME_HEIGHT);
+
+    if (ppu->screen == NULL)
+        goto init_error;
+
+    void *pixels;
+    int pitch;
+    if (SDL_LockTexture(ppu->screen, NULL, &pixels, &pitch) < 0)
+        goto init_error;
+
+    memcpy(pixels, ppu->frame_buffer, FRAME_HEIGHT * pitch);
+    SDL_UnlockTexture(ppu->screen);
+    SDL_RenderClear(ppu->renderer);
+    SDL_RenderCopy(ppu->renderer, ppu->screen, NULL, NULL);
+    SDL_RenderPresent(ppu->renderer);
+
+    return;
+
+init_error:
+    fprintf(stderr, "Failed to initialize screen: %s\n", SDL_GetError());
+    deinit_ppu(ppu);
+    exit(1);
+}
+
+static void render_frame(gba_ppu *ppu)
+{
+    void *pixels;
+    int pitch;
+
+    if (SDL_LockTexture(ppu->screen, NULL, &pixels, &pitch) < 0)
+        goto frame_render_error;
+
+    memcpy(pixels, ppu->frame_buffer, pitch * FRAME_HEIGHT);
+    SDL_UnlockTexture(ppu->screen);
+    SDL_RenderClear(ppu->renderer);
+    SDL_RenderCopy(ppu->renderer, ppu->screen, NULL, NULL);
+    SDL_RenderPresent(ppu->renderer);
+
+    return;
+
+frame_render_error:
+    fprintf(stderr, "Error rendering frame: %s\n", SDL_GetError());
+    exit(1);
+}
+
+static void render_scanline(gba_ppu *ppu)
+{
+    for (int i = 0; i < FRAME_WIDTH; ++i)
+        ppu->frame_buffer[FRAME_WIDTH * ppu->vcount + i] = WHITE;
+}
+
+// Called on entering HBlank, including during VBlank scanlines
+static void enter_hblank(gba_ppu *ppu)
+{
+    ppu->dispstat |= 0x2; // set HBlank flag
+
+    if (ppu->dispstat & (1 << 4))
+    {
+        // TODO: HBlank IRQ
+    }
+
+    if (ppu->vcount < VBLANK_START)
+        render_scanline(ppu);
+}
+
+static void enter_vblank(gba_ppu *ppu)
+{
+    ppu->dispstat |= 0x1; // VBlank flag
+    if (ppu->dispstat & (1 << 3))
+    {
+        // TODO: VBlank IRQ
+    }
+    render_frame(ppu);
+}
+
+static void update_vcount(gba_ppu *ppu)
+{
+    ppu->scanline_clock = 0;
+    ppu->dispstat &= ~0x2; // unset HBlank flag
+    ppu->vcount = (ppu->vcount + 1) % NUM_SCANLINES;
+
+    uint8_t lyc = ppu->dispstat >> 8;
+    if (lyc == ppu->vcount)
+    {
+        ppu->dispstat |= 0x4; // V-Counter flag
+        if (ppu->dispstat & (1 << 5))
+        {
+            // TODO: V-Counter IRQ
+        }
+    }
+    else
+    {
+        ppu->dispstat &= ~0x4;
+    }
+}
+
+void run_ppu(gba_ppu *ppu, int num_clocks)
+{
+    for (; num_clocks; --num_clocks)
+    {
+        ++ppu->scanline_clock;
+
+        if (ppu->scanline_clock == HBLANK_START)
+            enter_hblank(ppu);
+        else if (ppu->scanline_clock == SCANLINE_END)
+            update_vcount(ppu);
+
+        // beginning of new scanline
+        if (!ppu->scanline_clock)
+        {
+            // VBlank is scanlines 160..226 (not 227)
+            if (ppu->vcount == VBLANK_START)
+                enter_vblank(ppu);
+            else if (ppu->vcount == VBLANK_END)
+                ppu->dispstat &= ~0x1;
+        }
+    }
+}

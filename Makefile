@@ -1,5 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -I./include/ -std=c17
+CFLAGS += `sdl2-config --cflags`
+LDLIBS = `sdl2-config --libs`
 OBJDIR = obj
 BINDIR = bin
 DBGDIR = debug
@@ -40,11 +42,11 @@ $(DBG_BINDIR) $(DBG_OBJDIR) $(REL_BINDIR) $(REL_OBJDIR):
 
 # regular build
 $(RELBIN): $(RELOBJS) | $(REL_BINDIR)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 # debug build
 $(DBGBIN): $(DBGOBJS) | $(DBG_BINDIR)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 -include $(RELDEPENDS) $(DBGDEPENDS)
 

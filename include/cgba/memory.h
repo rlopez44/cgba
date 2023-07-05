@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 typedef struct arm7tdmi arm7tdmi;
+typedef struct gba_ppu gba_ppu;
 
 typedef struct gba_mem {
     // general internal memory
@@ -22,6 +23,7 @@ typedef struct gba_mem {
     uint8_t sram[0x10000];
 
     arm7tdmi *cpu;
+    gba_ppu *ppu;
 } gba_mem;
 
 uint32_t read_word(gba_mem *mem, uint32_t addr);
