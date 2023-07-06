@@ -44,7 +44,7 @@ static uint8_t byte_from_mmap(gba_mem *mem, uint32_t addr)
             // as 64k + 32k + 32k, with the 32k blocks
             // mirroring each other
             uint32_t offset = addr & 0x1ffff;
-            if (offset >= 0x17fff)
+            if (offset > 0x17fff)
                 offset -= 0x8000;
             byte = mem->vram[offset];
             break;
@@ -108,7 +108,7 @@ static void byte_to_mmap(gba_mem *mem, uint32_t addr, uint8_t byte)
             // as 64k + 32k + 32k, with the 32k blocks
             // mirroring each other
             uint32_t offset = addr & 0x1ffff;
-            if (offset >= 0x17fff)
+            if (offset > 0x17fff)
                 offset -= 0x8000;
             mem->vram[offset] = byte;
             break;
