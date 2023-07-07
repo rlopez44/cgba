@@ -11,7 +11,6 @@ typedef struct gba_mem {
     uint8_t bios[0x4000];
     uint8_t ewram[0x40000];
     uint8_t iwram[0x8000];
-    uint8_t io[0x400];
 
     // internal display memory
     uint8_t palette_ram[0x400];

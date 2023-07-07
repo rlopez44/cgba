@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cgba/cpu.h"
+#include "cgba/io.h"
 #include "cgba/memory.h"
 
 // helper to abstract away memory map reads
@@ -31,7 +32,7 @@ static uint8_t byte_from_mmap(gba_mem *mem, uint32_t addr)
             // TODO: implement undocumented port at
             // 0x04000800 repeated each 64k
             if ((addr & 0xffffff) <= 0x3ff)
-                byte = mem->io[addr & 0x3ff];
+                byte = read_io_byte(mem, addr);
             break;
 
         case 0x05: // palette RAM
@@ -95,7 +96,7 @@ static void byte_to_mmap(gba_mem *mem, uint32_t addr, uint8_t byte)
             // 0x04000800 repeated each 64k
             // TODO: implement read-only protections
             if ((addr & 0xffffff) <= 0x3ff)
-                mem->io[addr & 0x3ff] = byte;
+                write_io_byte(mem, addr, byte);
             break;
 
         case 0x05: // palette RAM

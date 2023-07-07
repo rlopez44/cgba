@@ -17,7 +17,7 @@ typedef struct gba_ppu {
 
     gba_mem *mem;
 
-    uint32_t frame_buffer[FRAME_WIDTH*FRAME_HEIGHT];
+    uint16_t frame_buffer[FRAME_WIDTH*FRAME_HEIGHT]; // XBGR1555
     int scanline_clock;
     bool curr_frame_rendered;
 

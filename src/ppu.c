@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "SDL_render.h"
-#include "SDL_video.h"
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
 #include "SDL.h"
@@ -17,8 +15,10 @@
 #define VBLANK_END    227 /* scanline end for vblank */
 #define NUM_SCANLINES 228
 
-/* ARGB8888 */
-#define WHITE 0xffffffff
+/* XBGR1555 */
+#define WHITE 0xffff
+
+#define VRAM_START 0x06000000
 
 gba_ppu *init_ppu(void)
 {
@@ -74,7 +74,7 @@ void init_screen_or_die(gba_ppu *ppu)
         goto init_error;
 
     ppu->screen = SDL_CreateTexture(ppu->renderer,
-                                    SDL_PIXELFORMAT_ARGB8888,
+                                    SDL_PIXELFORMAT_XBGR1555,
                                     SDL_TEXTUREACCESS_STREAMING,
                                     FRAME_WIDTH,
                                     FRAME_HEIGHT);
@@ -122,10 +122,47 @@ frame_render_error:
     exit(1);
 }
 
+static void render_mode3_scanline(gba_ppu *ppu)
+{
+    uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
+    bool bg2_enabled = ppu->dispcnt & (1 << 10);
+
+    if (bg2_enabled)
+    {
+        uint32_t addr;
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+        {
+            // XBGR1555 color format
+            addr = VRAM_START + 2*(base_offset + i);
+            ppu->frame_buffer[base_offset + i] = read_halfword(ppu->mem, addr);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[base_offset + i] = WHITE;
+    }
+}
+
 static void render_scanline(gba_ppu *ppu)
 {
-    for (int i = 0; i < FRAME_WIDTH; ++i)
-        ppu->frame_buffer[FRAME_WIDTH * ppu->vcount + i] = WHITE;
+    if (ppu->dispcnt & (1 << 7)) // forced blank
+    {
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[FRAME_WIDTH * ppu->vcount + i] = WHITE;
+    }
+    else switch (ppu->dispcnt & 0x7) // PPU mode
+    {
+        case 0x3:
+            render_mode3_scanline(ppu);
+            break;
+
+        default:
+            fprintf(stderr,
+                    "Error: Unimplemented BG mode: %d\n",
+                    ppu->dispcnt & 0x3);
+            exit(1);
+    }
 }
 
 // Called on entering HBlank, including during VBlank scanlines
