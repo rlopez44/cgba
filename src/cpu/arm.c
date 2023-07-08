@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
+#include "cgba/memory.h"
 
 #define COND_N_SHIFT 31
 #define COND_Z_SHIFT 30
@@ -319,7 +320,7 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     // operand1 is read after shifting is performed
     uint32_t op1 = cpu->registers[rn];
 
-    bool op_carry, op_overflow; // only used by arithmetic operations
+    bool op_carry = false, op_overflow = false; // only used by arithmetic operations
     switch (opcode)
     {
         case 0x0: // AND
@@ -471,11 +472,19 @@ static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
 
     if (load)
     {
-        // will use once loads implemented
-        (void)signed_;
-        (void)halfword;
-        fputs("Error: LDR instructions not yet implemented\n", stderr);
-        exit(1);
+        (void)halfword; // will use once LDRSB/LDRSH are implemented
+        if (signed_)
+        {
+            fputs("Error: LDRSB/LDRSH instructions not yet implemented\n", stderr);
+            exit(1);
+        }
+
+        // LDRH
+        cpu->registers[rd] = read_halfword(cpu->mem, transfer_addr);
+        if (rd == R15)
+            num_clocks = 5; // 2S + 2N + 1I
+        else
+            num_clocks = 3; // 1S + 1N + 1I
     }
     else // store: only one instruction: STRH (S=0, H=1)
     {
