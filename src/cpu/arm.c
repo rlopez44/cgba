@@ -470,21 +470,29 @@ static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
 
     prefetch(cpu); // prefetch occurs before the load/store
 
-    if (load)
+    if (load) // LDRH/LDRSH/LDRSB
     {
-        (void)halfword; // will use once LDRSB/LDRSH are implemented
-        if (signed_)
+        uint32_t data;
+        if (halfword)
         {
-            fputs("Error: LDRSB/LDRSH instructions not yet implemented\n", stderr);
-            exit(1);
+            data = read_halfword(cpu->mem, transfer_addr);
+            if (signed_ && data & 0x8000)
+                data |= 0xffff0000;
+        }
+        else
+        {
+            data = read_byte(cpu->mem, transfer_addr);
+            if (data & 0x80)
+                data |= 0xffffff00;
         }
 
-        // LDRH
-        cpu->registers[rd] = read_halfword(cpu->mem, transfer_addr);
+        cpu->registers[rd] = data;
+
         if (rd == R15)
-            num_clocks = 5; // 2S + 2N + 1I
-        else
-            num_clocks = 3; // 1S + 1N + 1I
+            reload_pipeline(cpu);
+
+        // R15: 2S + 2N + 1I, otherwise: 1S + 1N + 1I
+        num_clocks = rd == R15 ? 5 : 3;
     }
     else // store: only one instruction: STRH (S=0, H=1)
     {
@@ -497,9 +505,9 @@ static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
     if (write_back || !preindex)
     {
         if (add_offset)
-            cpu->registers[rn] = transfer_addr + offset;
+            cpu->registers[rn] += offset;
         else
-            cpu->registers[rn] = transfer_addr - offset;
+            cpu->registers[rn] -= offset;
     }
 
     return num_clocks;
