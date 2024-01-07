@@ -560,6 +560,9 @@ int decode_and_execute_arm(arm7tdmi *cpu)
 
 // temporary until all instructions are implemented
 unimplemented:
-    fprintf(stderr, "Error: Unimplemented instruction encountered: %08X\n", inst);
+    fprintf(stderr,
+            "Error: Unimplemented instruction encountered: %08X at address %08X\n",
+            inst,
+            cpu->registers[R15] - 8);
     exit(1);
 }
