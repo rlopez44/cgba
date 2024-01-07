@@ -130,14 +130,12 @@ static int bx(arm7tdmi *cpu, uint32_t inst)
 }
 
 // perform barrel shifter operation and return the shifter's carry out
-static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result)
+static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate)
 {
     bool shifter_carry = false;
-    bool imm = inst & (1 << 25);
-
     uint8_t shift_amt;
     uint32_t op2;
-    if (imm) // shift immediate value
+    if (immediate) // shift immediate value
     {
         op2 = inst & 0xff;
         shift_amt = 2 * ((inst >> 8) & 0xf); // shift by twice rotate field
@@ -308,14 +306,16 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
                       || opcode == 0x9
                       || opcode >= 0xc;
 
+    bool immediate = inst & (1 << 25);
+
     // register specified shift
-    bool shift_by_r = !(inst & (1 << 25)) && (inst & (1 << 4));
+    bool shift_by_r = !immediate && (inst & (1 << 4));
 
     bool write_result = opcode <= 0x7 || opcode >= 0xc;
     bool carry_flag = cpu->cpsr & COND_C_BITMASK;
 
     uint32_t result, op2;
-    bool shifter_carry = barrel_shift(cpu, inst, &op2);
+    bool shifter_carry = barrel_shift(cpu, inst, &op2, immediate);
 
     // operand1 is read after shifting is performed
     uint32_t op1 = cpu->registers[rn];
@@ -444,6 +444,83 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     return num_clocks;
 }
 
+static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
+{
+    int num_clocks;
+    bool immediate = !(inst & (1 << 25));
+    bool preindex = inst & (1 << 24);
+    bool add_offset = inst & (1 << 23);
+    bool byte_trans = inst & (1 << 22);
+    bool write_back = inst & (1 << 21);
+    bool load = inst & (1 << 20);
+
+    arm_register rn = (inst >> 16) & 0xf;
+    arm_register rd = (inst >> 12) & 0xf;
+
+    uint32_t offset;
+    if (immediate)
+        offset = inst & 0x0fff;
+    else
+        barrel_shift(cpu, inst, &offset, false); // always register by immediate
+
+    uint32_t transfer_addr = cpu->registers[rn];
+
+    if (preindex)
+    {
+        if (add_offset)
+            transfer_addr += offset;
+        else
+            transfer_addr -= offset;
+    }
+
+    prefetch(cpu); // prefetch occurs before the load/store
+
+    if (load)
+    {
+        if (byte_trans)
+        {
+            cpu->registers[rd] = read_byte(cpu->mem, transfer_addr);
+        }
+        else
+        {
+            // if address is not word-aligned, we need to rotate the
+            // word-aligned data so the addressed byte is in bits 0-7 of Rd
+            int boundary_offset = transfer_addr & 0x3;
+            int rot_amt = 8 * boundary_offset;
+            uint32_t word = read_word(cpu->mem, transfer_addr);
+
+            if (rot_amt)
+                cpu->registers[rd] = word >> rot_amt | word << (32 - rot_amt);
+            else
+                cpu->registers[rd] = word;
+        }
+
+        // R15: 2S + 2N + 1I, else 1S + 1N + 1I
+        num_clocks = rd == R15 ? 5 : 3;
+    }
+    else
+    {
+        if (byte_trans)
+            write_byte(cpu->mem, transfer_addr, cpu->registers[rd]);
+        else
+            write_word(cpu->mem, transfer_addr, cpu->registers[rd]);
+
+        num_clocks = 2; // 2N cycles
+    }
+
+    // write back to base register if needed
+    // post-index transfers always write back
+    if (write_back || !preindex)
+    {
+        if (add_offset)
+            cpu->registers[rn] += offset;
+        else
+            cpu->registers[rn] -= offset;
+    }
+
+    return num_clocks;
+}
+
 static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
 {
     int num_clocks;
@@ -538,7 +615,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e000010) == 0x06000010) // undefined
         goto unimplemented;
     else if ((inst & 0x0c000000) == 0x04000000) // single data transfer
-        goto unimplemented;
+        num_clocks = single_data_transfer(cpu, inst);
     else if ((inst & 0x0f800ff0) == 0x01000090) // single data swap
         goto unimplemented;
     else if ((inst & 0x0f0000f0) == 0x00000090) // multiply and multiply long

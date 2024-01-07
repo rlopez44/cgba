@@ -166,11 +166,25 @@ uint8_t read_byte(gba_mem *mem, uint32_t addr)
     return byte_from_mmap(mem, addr);
 }
 
+void write_word(gba_mem *mem, uint32_t addr, uint32_t val)
+{
+    addr &= ~0x3u; // force alignment
+    byte_to_mmap(mem, addr, val);
+    byte_to_mmap(mem, addr + 1, val >> 8);
+    byte_to_mmap(mem, addr + 2, val >> 16);
+    byte_to_mmap(mem, addr + 3, val >> 24);
+}
+
 void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val)
 {
     addr &= ~0x1u; // force alignment
     byte_to_mmap(mem, addr, val);
     byte_to_mmap(mem, addr + 1, val >> 8);
+}
+
+void write_byte(gba_mem *mem, uint32_t addr, uint8_t val)
+{
+    byte_to_mmap(mem, addr, val);
 }
 
 static size_t load_rom_or_die(gba_mem *mem, const char *romfile)
