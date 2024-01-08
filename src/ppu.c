@@ -18,6 +18,7 @@
 /* XBGR1555 */
 #define WHITE 0xffff
 
+#define PRAM_START 0x05000000
 #define VRAM_START 0x06000000
 
 gba_ppu *init_ppu(void)
@@ -144,6 +145,30 @@ static void render_mode3_scanline(gba_ppu *ppu)
     }
 }
 
+static void render_mode4_scanline(gba_ppu *ppu)
+{
+    uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
+    bool bg2_enabled = ppu->dispcnt & (1 << 10);
+    bool frameno = ppu->dispcnt & (1 << 4);
+
+    if (bg2_enabled)
+    {
+        uint32_t addr;
+        uint8_t palette_idx;
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+        {
+            palette_idx = VRAM_START + frameno*0xa000 + base_offset + i;
+            addr = PRAM_START + 2*palette_idx;
+            ppu->frame_buffer[base_offset + i] = read_halfword(ppu->mem, addr);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[base_offset + i] = WHITE;
+    }
+}
+
 static void render_scanline(gba_ppu *ppu)
 {
     if (ppu->dispcnt & (1 << 7)) // forced blank
@@ -155,6 +180,10 @@ static void render_scanline(gba_ppu *ppu)
     {
         case 0x3:
             render_mode3_scanline(ppu);
+            break;
+
+        case 0x4:
+            render_mode4_scanline(ppu);
             break;
 
         default:
