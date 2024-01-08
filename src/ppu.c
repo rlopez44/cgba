@@ -160,7 +160,7 @@ static void render_scanline(gba_ppu *ppu)
         default:
             fprintf(stderr,
                     "Error: Unimplemented BG mode: %d\n",
-                    ppu->dispcnt & 0x3);
+                    ppu->dispcnt & 0x7);
             exit(1);
     }
 }
