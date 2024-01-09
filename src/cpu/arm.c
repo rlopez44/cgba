@@ -495,6 +495,9 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
                 cpu->registers[rd] = word;
         }
 
+        if (rd == R15)
+            reload_pipeline(cpu);
+
         // R15: 2S + 2N + 1I, else 1S + 1N + 1I
         num_clocks = rd == R15 ? 5 : 3;
     }
