@@ -457,12 +457,12 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
 static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
 {
     int num_clocks;
-    bool pc_loaded = false;
     bool preindex    = inst & (1 << 24);
     bool add         = inst & (1 << 23);
     bool mode_change = inst & (1 << 22);
     bool write_back  = inst & (1 << 21);
     bool load        = inst & (1 << 20);
+    bool pc_trans    = inst & (1 << 15);
 
     // TODO: add support for mode changes when S bit is set
     if (mode_change)
@@ -503,43 +503,28 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
             curr_addr += 4;
 
         if (load)
-        {
             cpu->registers[i] = read_word(cpu->mem, curr_addr);
-            if (i == R15)
-            {
-                pc_loaded = true;
-                reload_pipeline(cpu);
-            }
-        }
         else
-        {
             write_word(cpu->mem, curr_addr, cpu->registers[i]);
-        }
 
         if (!effective_preincrement)
             curr_addr += 4;
     }
 
-    if (write_back)
-    {
-        if (add)
-            cpu->registers[rn] = curr_addr;
-        else
-            cpu->registers[rn] = base - 4*num_transfers;
-    }
+    if (pc_trans)
+        reload_pipeline(cpu);
 
-    if (load)
-    {
-        if (pc_loaded) // (n+1)S + 2N + 1I
-            num_clocks = (num_transfers + 1) + 2 + 1;
-        else // nS + 1N + 1I
-            num_clocks = num_transfers + 1 + 1;
-    }
+    if (write_back && add)
+        cpu->registers[rn] = curr_addr;
+    else if (write_back)
+        cpu->registers[rn] = base - 4*num_transfers;
+
+    if (load && pc_trans)
+        num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
+    else if (load)
+        num_clocks = num_transfers + 1 + 1;       // nS + 1N + 1I
     else
-    {
-        // (n - 1)S + 2N
-        num_clocks = (num_transfers - 1) + 2;
-    }
+        num_clocks = (num_transfers - 1) + 2;     // (n - 1)S + 2N
 
     return num_clocks;
 }
