@@ -16,6 +16,16 @@
 #define COND_C_BITMASK (1 << COND_C_SHIFT)
 #define COND_V_BITMASK (1 << COND_V_SHIFT)
 
+static int count_set_bits(uint32_t n)
+{
+    // Source: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
+    int nset;
+    for (nset = 0; n; ++nset)
+        n &= n - 1; // clear the least significant bit set
+
+    return nset;
+}
+
 // decode ARM condition field
 static bool check_cond(arm7tdmi *cpu, uint32_t inst)
 {
@@ -444,6 +454,96 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     return num_clocks;
 }
 
+static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
+{
+    int num_clocks;
+    bool pc_loaded = false;
+    bool preindex    = inst & (1 << 24);
+    bool add         = inst & (1 << 23);
+    bool mode_change = inst & (1 << 22);
+    bool write_back  = inst & (1 << 21);
+    bool load        = inst & (1 << 20);
+
+    // TODO: add support for mode changes when S bit is set
+    if (mode_change)
+    {
+        fprintf(stderr, "Error: block data transfer with S bit set not supported\n");
+        exit(1);
+    }
+
+    arm_register rn = (inst >> 16) & 0xf;
+    uint32_t base = cpu->registers[rn];
+    uint32_t curr_addr = base;
+
+    prefetch(cpu);
+
+    // we need to count the number of registers to be transferred because
+    // LDM/STM start at the lowest address of the block and fill upward
+    int num_transfers = count_set_bits(inst & 0xffff);
+
+    if (!add)
+        curr_addr -= 4*num_transfers;
+
+    bool effective_preincrement = (preindex && add) || (!preindex && !add);
+    for (arm_register i = 0; i < ARM_NUM_REGISTERS; ++i)
+    {
+        // bit i not set -> no transfer for register Ri
+        if (!(inst & (1 << i)))
+            continue;
+
+        // TODO: inclusion of the base in the register list
+        if (i == rn && !load)
+        {
+            fprintf(stderr, "Error: STM with register in register list at %08X\n",
+                    cpu->registers[R15] - 12);
+            exit(1);
+        }
+
+        if (effective_preincrement)
+            curr_addr += 4;
+
+        if (load)
+        {
+            cpu->registers[i] = read_word(cpu->mem, curr_addr);
+            if (i == R15)
+            {
+                pc_loaded = true;
+                reload_pipeline(cpu);
+            }
+        }
+        else
+        {
+            write_word(cpu->mem, curr_addr, cpu->registers[i]);
+        }
+
+        if (!effective_preincrement)
+            curr_addr += 4;
+    }
+
+    if (write_back)
+    {
+        if (add)
+            cpu->registers[rn] = curr_addr;
+        else
+            cpu->registers[rn] = base - 4*num_transfers;
+    }
+
+    if (load)
+    {
+        if (pc_loaded) // (n+1)S + 2N + 1I
+            num_clocks = (num_transfers + 1) + 2 + 1;
+        else // nS + 1N + 1I
+            num_clocks = num_transfers + 1 + 1;
+    }
+    else
+    {
+        // (n - 1)S + 2N
+        num_clocks = (num_transfers - 1) + 2;
+    }
+
+    return num_clocks;
+}
+
 static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
 {
     int num_clocks;
@@ -610,7 +710,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
         num_clocks = bx(cpu, inst);
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
-        goto unimplemented;
+        block_data_transfer(cpu, inst);
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
         num_clocks = branch(cpu, inst);
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
