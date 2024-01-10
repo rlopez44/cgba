@@ -36,5 +36,5 @@ if __name__ == '__main__':
         print(f'Usage: {sys.argv[0]} <instruction>')
         sys.exit(2)
 
-    inst = int(sys.argv[1], 0)
+    inst = int(sys.argv[1], base=16)
     decode_inst(inst)
