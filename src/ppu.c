@@ -153,13 +153,14 @@ static void render_mode4_scanline(gba_ppu *ppu)
 
     if (bg2_enabled)
     {
-        uint32_t addr;
+        uint32_t pixel_addr, palette_idx_addr;
         uint8_t palette_idx;
         for (int i = 0; i < FRAME_WIDTH; ++i)
         {
-            palette_idx = VRAM_START + frameno*0xa000 + base_offset + i;
-            addr = PRAM_START + 2*palette_idx;
-            ppu->frame_buffer[base_offset + i] = read_halfword(ppu->mem, addr);
+            palette_idx_addr = VRAM_START + frameno*0xa000 + base_offset + i;
+            palette_idx = read_byte(ppu->mem, palette_idx_addr);
+            pixel_addr = PRAM_START + 2*palette_idx;
+            ppu->frame_buffer[base_offset + i] = read_halfword(ppu->mem, pixel_addr);
         }
     }
     else
