@@ -609,7 +609,7 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     return num_clocks;
 }
 
-static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
+static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
 {
     int num_clocks;
     bool preindex = inst & (1 << 24);
@@ -622,7 +622,12 @@ static int halfword_transfer_immediate(arm7tdmi *cpu, uint32_t inst)
     arm_register rn = (inst >> 16) & 0xf;
     arm_register rd = (inst >> 12) & 0xf;
 
-    uint8_t offset = ((inst >> 4) & 0xf0) | (inst & 0xf);
+    uint32_t offset;
+    if (immediate) // 8-bit immediate
+        offset = ((inst >> 4) & 0xf0) | (inst & 0xf);
+    else
+        offset = cpu->registers[inst & 0xf];
+
     uint32_t transfer_addr = cpu->registers[rn];
 
     if (preindex)
@@ -709,9 +714,9 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0f0000f0) == 0x00000090) // multiply and multiply long
         goto unimplemented;
     else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
-        goto unimplemented;
+        num_clocks = halfword_transfer(cpu, inst, false);
     else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
-        num_clocks = halfword_transfer_immediate(cpu, inst);
+        num_clocks = halfword_transfer(cpu, inst, true);
     else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
         goto unimplemented;
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
