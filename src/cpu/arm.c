@@ -695,7 +695,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
         num_clocks = bx(cpu, inst);
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
-        block_data_transfer(cpu, inst);
+        num_clocks = block_data_transfer(cpu, inst);
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
         num_clocks = branch(cpu, inst);
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
