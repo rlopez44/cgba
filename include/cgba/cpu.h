@@ -11,7 +11,7 @@
 #define ARM_NUM_BANKED_REGISTERS 7
 #define ARM_NUM_REGISTERS 16
 
-#define CPU_MODE_MASK 0xffffffe0
+#define CPU_MODE_MASK 0x1fu
 
 typedef enum arm_cpu_mode {
     MODE_USR = 0x10,
