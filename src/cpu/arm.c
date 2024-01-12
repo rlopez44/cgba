@@ -75,26 +75,26 @@ static void prefetch(arm7tdmi *cpu)
     cpu->registers[R15] += 4;
 }
 
-static arm_bankmode get_current_mode(arm7tdmi *cpu)
+static arm_bankmode get_current_bankmode(arm7tdmi *cpu)
 {
     arm_bankmode mode;
-    switch (cpu->cpsr & 0x1f)
+    switch (cpu->cpsr & CPU_MODE_MASK)
     {
-        case 0x10: // user mode, nothing to restore
-        case 0x1f: // system mode (= privileged user mode)
+        case MODE_USR:
+        case MODE_SYS:
             mode = BANK_NONE;
             break;
 
-        case 0x11: mode = BANK_FIQ; break;
-        case 0x12: mode = BANK_IRQ; break;
-        case 0x13: mode = BANK_SVC; break;
-        case 0x17: mode = BANK_ABT; break;
-        case 0x1b: mode = BANK_UND; break;
+        case MODE_FIQ: mode = BANK_FIQ; break;
+        case MODE_IRQ: mode = BANK_IRQ; break;
+        case MODE_SVC: mode = BANK_SVC; break;
+        case MODE_ABT: mode = BANK_ABT; break;
+        case MODE_UND: mode = BANK_UND; break;
 
         default: // illegal mode, should not get here
             fprintf(stderr,
                     "Error: Illegal CPU mode encountered: %02x\n",
-                    cpu->cpsr & 0x1f);
+                    cpu->cpsr & CPU_MODE_MASK);
             exit(1);
     }
 
@@ -103,7 +103,7 @@ static arm_bankmode get_current_mode(arm7tdmi *cpu)
 
 static void restore_cpsr(arm7tdmi *cpu)
 {
-    arm_bankmode mode = get_current_mode(cpu);
+    arm_bankmode mode = get_current_bankmode(cpu);
     if (mode != BANK_NONE)
         cpu->cpsr = cpu->spsr[mode];
 }
@@ -288,7 +288,7 @@ static int branch(arm7tdmi *cpu, uint32_t inst)
         // point to instruction following the branch, R14[1:0] always cleared
         uint32_t old_pc = (cpu->registers[R15] - 4) & ~0x3;
 
-        arm_bankmode mode = get_current_mode(cpu);
+        arm_bankmode mode = get_current_bankmode(cpu);
         if (mode == BANK_NONE)
             cpu->registers[R14] = old_pc;
         else
