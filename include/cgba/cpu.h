@@ -11,7 +11,20 @@
 #define ARM_NUM_BANKED_REGISTERS 7
 #define ARM_NUM_REGISTERS 16
 
-#define CPU_MODE_MASK 0x1fu
+#define CPU_MODE_MASK   0x1fu
+#define CNTRL_BITS_MASK 0xffu
+
+#define COND_N_SHIFT 31
+#define COND_Z_SHIFT 30
+#define COND_C_SHIFT 29
+#define COND_V_SHIFT 28
+
+#define COND_N_BITMASK (1 << COND_N_SHIFT)
+#define COND_Z_BITMASK (1 << COND_Z_SHIFT)
+#define COND_C_BITMASK (1 << COND_C_SHIFT)
+#define COND_V_BITMASK (1 << COND_V_SHIFT)
+
+#define COND_FLAGS_MASK 0xf0000000
 
 typedef enum arm_cpu_mode {
     MODE_USR = 0x10,

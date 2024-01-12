@@ -6,16 +6,6 @@
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
-#define COND_N_SHIFT 31
-#define COND_Z_SHIFT 30
-#define COND_C_SHIFT 29
-#define COND_V_SHIFT 28
-
-#define COND_N_BITMASK (1 << COND_N_SHIFT)
-#define COND_Z_BITMASK (1 << COND_Z_SHIFT)
-#define COND_C_BITMASK (1 << COND_C_SHIFT)
-#define COND_V_BITMASK (1 << COND_V_SHIFT)
-
 static int count_set_bits(uint32_t n)
 {
     // Source: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
@@ -683,6 +673,49 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
     return num_clocks;
 }
 
+// transfer data from a register or immediate value to a PSR
+static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
+{
+    bool to_spsr = inst & (1 << 22);
+    bool full_psr = inst & (1 << 16);
+    arm_cpu_mode cpu_mode = cpu->cpsr & CPU_MODE_MASK;
+    arm_bankmode bank_mode = get_current_bankmode(cpu);
+
+    uint32_t *dest_psr = to_spsr ? cpu->spsr + bank_mode : &cpu->cpsr;
+
+    if (to_spsr && (cpu_mode == MODE_USR || cpu_mode == MODE_SYS))
+    {
+        fprintf(stderr, "Error: PSR transfer to SPSR attempted in user mode\n");
+        exit(1);
+    }
+
+    uint32_t new_psr;
+    if (full_psr)
+    {
+        new_psr = cpu->registers[inst & 0xf];
+
+        // control bits are protected in unprivileged user mode
+        if (cpu_mode == MODE_USR)
+            new_psr &= ~CNTRL_BITS_MASK;
+
+        *dest_psr = new_psr;
+    }
+    else
+    {
+        if (inst & (1 << 25))
+            new_psr = (inst & 0xff) << ((inst >> 8) & 0xf);
+        else
+            new_psr = cpu->registers[inst & 0xf];
+
+        *dest_psr = (*dest_psr & ~COND_FLAGS_MASK) | (new_psr & COND_FLAGS_MASK);
+    }
+
+    prefetch(cpu);
+
+    // 1S cycles
+    return 1;
+}
+
 int decode_and_execute_arm(arm7tdmi *cpu)
 {
     uint32_t inst = cpu->pipeline[0];
@@ -720,7 +753,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
         goto unimplemented;
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
-        goto unimplemented;
+        num_clocks = msr_transfer(cpu, inst);
     else if ((inst & 0x0c000000) == 0x00000000) // data processing
         num_clocks = process_data(cpu, inst);
     else
