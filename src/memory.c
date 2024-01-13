@@ -16,8 +16,13 @@ static uint8_t byte_from_mmap(gba_mem *mem, uint32_t addr)
     {
         case 0x00: // BIOS
             // can only read BIOS when PC is inside BIOS
-            if (addr <= 0x3fff && mem->cpu->registers[R15] <= 0x3fff)
+            // recall: R15 = PC + 8 (BIOS access expected in ARM state)
+            if (addr <= 0x3fff && mem->cpu->registers[R15] <= 0x3fff + 8)
                 byte = mem->bios[addr & 0x3fff];
+            else
+                fprintf(stderr,
+                        "Warning: attempted BIOS data access from outside BIOS: PC=%08X\n",
+                        mem->cpu->registers[R15] - 8);
             break;
 
         case 0x02: // EWRAM
