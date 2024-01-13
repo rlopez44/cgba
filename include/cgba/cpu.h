@@ -26,6 +26,10 @@
 
 #define COND_FLAGS_MASK 0xf0000000
 
+#define THUMB_ENABLE  (1 << 5)
+#define FIQ_DISABLE   (1 << 6)
+#define IRQ_DISABLE   (1 << 7)
+
 typedef enum arm_cpu_mode {
     MODE_USR = 0x10,
     MODE_FIQ = 0x11,

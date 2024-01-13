@@ -63,15 +63,10 @@ void reset_cpu(arm7tdmi *cpu)
 {
     // NOTE: the value of PC and CPSR saved on
     // reset is not defined by the architecture
-    cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R14];
+    cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R15];
     cpu->spsr[BANK_SVC] = cpu->cpsr;
-    cpu->cpsr = (cpu->cpsr & ~CPU_MODE_MASK) | MODE_SVC;
-    cpu->cpsr = (cpu->cpsr & ~0xe0) | 0xc0;
-    cpu->registers[R14] = 0x0;
-
-    // to simplify things, we'll also use a few more cycles
-    // to fill up the instruction pipeline, rather than
-    // deferring this to the CPU's run function
+    cpu->cpsr = (cpu->cpsr & ~CNTRL_BITS_MASK) | IRQ_DISABLE | FIQ_DISABLE | MODE_SVC;
+    cpu->registers[R15] = 0x0;
     reload_pipeline(cpu);
 }
 
