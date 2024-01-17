@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "arm7tdmi.h"
+#include "cgba/bios.h"
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
@@ -716,10 +717,36 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
     return 1;
 }
 
+/*
+ * Enter the software interrupt trap by doing the following:
+ * - save address to instruction following SWI into R14_svc
+ * - save the CPSR to SPSR_svc
+ * - disable interrupts
+ * - enter ARM state
+ * - enter supervisor mode
+ * - jump to SWI vector
+ */
+static int software_interrupt(arm7tdmi *cpu)
+{
+    // 2S + 1N
+    int num_clocks = 3;
+    cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R15] - 4;
+    cpu->spsr[BANK_SVC] = cpu->cpsr;
+    cpu->cpsr = (cpu->cpsr & ~CNTRL_BITS_MASK) | IRQ_DISABLE | FIQ_DISABLE | MODE_SVC;
+
+    cpu->registers[R15] = 0x08;
+    reload_pipeline(cpu);
+
+    // NOTE: since I don't support BIOS files yet I emulate syscalls in C
+    num_clocks += gba_syscall(cpu);
+
+    return num_clocks;
+}
+
 int decode_and_execute_arm(arm7tdmi *cpu)
 {
     uint32_t inst = cpu->pipeline[0];
-     // all instructions can be conditionally executed
+    // all instructions can be conditionally executed
     if (!check_cond(cpu, inst))
     {
         // instruction takes on sequential cycle to prefetch
@@ -737,7 +764,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e000000) == 0x0a000000) // branch and branch with link
         num_clocks = branch(cpu, inst);
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
-        goto unimplemented;
+        num_clocks = software_interrupt(cpu);
     else if ((inst & 0x0e000010) == 0x06000010) // undefined
         goto unimplemented;
     else if ((inst & 0x0c000000) == 0x04000000) // single data transfer
