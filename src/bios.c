@@ -19,13 +19,13 @@ int gba_syscall(arm7tdmi *cpu)
     {
         case SYSCALL_DIV:
         {
-            uint32_t n = cpu->registers[R0];
-            uint32_t d = cpu->registers[R1];
-            uint32_t quot = (int32_t)n / (int32_t)d;
-            uint32_t rem = (int32_t)n % (int32_t)d;
+            int32_t n = cpu->registers[R0];
+            int32_t d = cpu->registers[R1];
+            int32_t quot = n / d;
+            int32_t rem = n % d;
             cpu->registers[R0] = quot;
             cpu->registers[R1] = rem;
-            cpu->registers[R3] = quot >> 31 ? ~(quot - 1) : quot;
+            cpu->registers[R3] = quot < 0 ? -quot : quot;
             break;
         }
 
