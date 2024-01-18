@@ -718,6 +718,75 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
 }
 
 /*
+ * Calculate how many 8-bit multiplier array
+ * cycles the MUL/MLA instruction required.
+ *
+ * 1 if Rs[31:8] are all zero or all one
+ * 2 if Rs[31:16] are all zero or all one
+ * 3 if Rs[31:24] are all zero or all one
+ * 4 otherwise
+ */
+static int get_multiply_array_cycles(uint32_t rs)
+{
+    int num_clocks = 4;
+    uint32_t work_val = rs;
+    uint32_t ref_val = 0xffffffff;
+    for (int i = 1; i < 4; ++i)
+    {
+        work_val >>= 8;
+        ref_val >>= 8;
+        if (!work_val || work_val == ref_val)
+        {
+            num_clocks = i;
+            break;
+        }
+    }
+
+    return num_clocks;
+}
+
+static int multiply(arm7tdmi *cpu, uint32_t inst)
+{
+    bool mul_long = (inst >> 23) & 1;
+    if (mul_long)
+    {
+        fputs("Error: MULL/MLAL instructions not yet implemented\n", stderr);
+        exit(1);
+    }
+
+    bool accumulate = (inst >> 21) & 1;
+    bool set_conds  = (inst >> 20) & 1;
+    arm_register rd = (inst >> 16) & 0xff;
+    arm_register rn = (inst >> 12) & 0xff;
+    arm_register rs = (inst >> 8) & 0xff;
+    arm_register rm = inst & 0xff;
+
+    prefetch(cpu);
+
+    uint32_t rs_value = cpu->registers[rs];
+    uint32_t result = cpu->registers[rm] * rs_value;
+    if (accumulate)
+        result += cpu->registers[rn];
+
+    cpu->registers[rd] = result;
+
+    if (set_conds)
+    {
+        cpu->cpsr = cpu->cpsr & ~(COND_N_BITMASK | COND_Z_BITMASK);
+
+        if (!result)
+            cpu->cpsr |= COND_Z_BITMASK;
+        else if (result >> 31)
+            cpu->cpsr |= COND_N_BITMASK;
+    }
+
+    int array_cycles = get_multiply_array_cycles(rs_value);
+
+    // MUL: 1S + (array_cycles)I, MLA: 1S + (array_cycles + 1)I
+    return 1 + array_cycles + accumulate;
+}
+
+/*
  * Enter the software interrupt trap by doing the following:
  * - save address to instruction following SWI into R14_svc
  * - save the CPSR to SPSR_svc
@@ -772,7 +841,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0f800ff0) == 0x01000090) // single data swap
         goto unimplemented;
     else if ((inst & 0x0f0000f0) == 0x00000090) // multiply and multiply long
-        goto unimplemented;
+        num_clocks = multiply(cpu, inst);
     else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
         num_clocks = halfword_transfer(cpu, inst, false);
     else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
