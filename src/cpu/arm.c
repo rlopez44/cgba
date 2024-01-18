@@ -704,7 +704,7 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
     else
     {
         if (inst & (1 << 25))
-            new_psr = (inst & 0xff) << ((inst >> 8) & 0xf);
+            barrel_shift(cpu, inst, &new_psr, true);
         else
             new_psr = cpu->registers[inst & 0xf];
 
