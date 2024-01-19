@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import sys
 
-def decode_inst(inst):
+def decode_arm_inst(inst):
+    print('ARM:', end=' ')
+
     if (inst & 0x0ffffff0) == 0x012fff10:   # branch and exchange
         print('Branch and exchange')
     elif (inst & 0x0e000000) == 0x08000000: # block data transfer
@@ -31,10 +33,63 @@ def decode_inst(inst):
     else:
         print('Illegal instruction')
 
+def decode_thumb_inst(inst):
+    print('THUMB:', end=' ')
+
+    if (inst & 0xff00) == 0xdf00:   # software interrupt
+        print('Software interrupt')
+    elif (inst & 0xf800) == 0xe000: # unconditional branch
+        print('Unconditional branch')
+    elif (inst & 0xf000) == 0xd000: # conditional branch
+        print('Conditional branch')
+    elif (inst & 0xf000) == 0xc000: # multiple load/store
+        print('Multiple load/store')
+    elif (inst & 0xf000) == 0xf000: # long branch w/link
+        print('Long branch w/link')
+    elif (inst & 0xff00) == 0xb000: # add offset to SP
+        print('Add offset to SP')
+    elif (inst & 0xf600) == 0xb400: # push/pop registers
+        print('Push/pop registers')
+    elif (inst & 0xf000) == 0x8000: # load/store halfword
+        print('Load/store halfword')
+    elif (inst & 0xf000) == 0x9000: # SP relative load/store
+        print('SP relative load/store')
+    elif (inst & 0xf000) == 0xa000: # load address
+        print('Load address')
+    elif (inst & 0xe000) == 0x6000: # load/store w/immediate offset
+        print('Load/store w/immediate offset')
+    elif (inst & 0xf200) == 0x5000: # load/store w/register offset
+        print('Load/store w/register offset')
+    elif (inst & 0xf200) == 0x5200: # load/store sign-extended byte/halfword
+        print('Load/store sign-extended byte/halfword')
+    elif (inst & 0xf800) == 0x4800: # PC relative load
+        print('PC relative load')
+    elif (inst & 0xfc00) == 0x4400: # hi register operations/branch exchange
+        print('Hi register operations/branch exchange')
+    elif (inst & 0xfc00) == 0x4000: # ALU operations
+        print('ALU operations')
+    elif (inst & 0xe000) == 0x2000: # move/compare/add/subtract immediate
+        print('Move/compare/add/subtract immediate')
+    elif (inst & 0xf800) == 0x1800: # add/subtract
+        print('Add/subtract')
+    elif (inst & 0xe000) == 0x0000: # move shifted register
+        print('Move shifted register')
+    else:
+        print('Illegal instruction')
+
 if __name__ == '__main__':
     if not sys.argv[1:]:
-        print(f'Usage: {sys.argv[0]} <instruction>')
+        print(f'Usage: {sys.argv[0]} <instruction>', file=sys.stderr)
         sys.exit(2)
 
+    instlen = len(sys.argv[1])
+    if instlen not in (4, 8):
+        print('Incorrect instruction format. Expected 32-bit or 16-bit hex value',
+              file=sys.stderr)
+        sys.exit(1)
+
     inst = int(sys.argv[1], base=16)
-    decode_inst(inst)
+    if instlen == 4:
+        decode_thumb_inst(inst)
+    else:
+        decode_arm_inst(inst)
