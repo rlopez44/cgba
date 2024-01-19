@@ -58,14 +58,6 @@ static bool check_cond(arm7tdmi *cpu, uint32_t inst)
     return result;
 }
 
-// prefetch a new instruction for the instruction pipeline
-static void prefetch(arm7tdmi *cpu)
-{
-    cpu->pipeline[0] = cpu->pipeline[1];
-    cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15]);
-    cpu->registers[R15] += 4;
-}
-
 static arm_bankmode get_current_bankmode(arm7tdmi *cpu)
 {
     arm_bankmode mode;
@@ -97,12 +89,6 @@ static void restore_cpsr(arm7tdmi *cpu)
     arm_bankmode mode = get_current_bankmode(cpu);
     if (mode != BANK_NONE)
         cpu->cpsr = cpu->spsr[mode];
-}
-
-static inline void panic_illegal_instruction(uint32_t inst)
-{
-    fprintf(stderr, "Error: Illegal instruction encountered: %08X\n", inst);
-    exit(1);
 }
 
 static int bx(arm7tdmi *cpu, uint32_t inst)
@@ -853,14 +839,14 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0c000000) == 0x00000000) // data processing
         num_clocks = process_data(cpu, inst);
     else
-        panic_illegal_instruction(inst);
+        panic_illegal_instruction(cpu);
 
     return num_clocks;
 
 // temporary until all instructions are implemented
 unimplemented:
     fprintf(stderr,
-            "Error: Unimplemented instruction encountered: %08X at address %08X\n",
+            "Error: Unimplemented ARM instruction encountered: %08X at address %08X\n",
             inst,
             cpu->registers[R15] - 8);
     exit(1);

@@ -38,17 +38,57 @@ static int decode_and_execute(arm7tdmi *cpu)
 {
     int num_clocks;
     if (cpu->cpsr & T_BITMASK)
+        num_clocks = decode_and_execute_thumb(cpu);
+    else
+        num_clocks = decode_and_execute_arm(cpu);
+
+    return num_clocks;
+}
+
+// prefetch a new instruction for the instruction pipeline
+void prefetch(arm7tdmi *cpu)
+{
+    bool thumb = cpu->cpsr & T_BITMASK;
+    cpu->pipeline[0] = cpu->pipeline[1];
+
+    uint32_t fetched;
+    if (thumb)
+        fetched = read_halfword(cpu->mem, cpu->registers[R15]);
+    else
+        fetched = read_word(cpu->mem, cpu->registers[R15]);
+
+    cpu->pipeline[1] = fetched;
+
+    cpu->registers[R15] += thumb ? 2 : 4;
+}
+
+void panic_illegal_instruction(arm7tdmi *cpu)
+{
+    const char *inst_type;
+    int padlen;
+    uint32_t addr;
+    uint32_t inst = cpu->pipeline[0];
+    if (cpu->cpsr & T_BITMASK)
     {
-        // TODO: thumb support
-        fprintf(stderr, "NotImplemented: Thumb instructions\n");
-        exit(1);
+        inst &= 0xffff;
+        padlen = 4;
+        inst_type = "THUMB";
+        addr = cpu->registers[R15] - 4;
     }
     else
     {
-        num_clocks = decode_and_execute_arm(cpu);
+        padlen = 8;
+        inst_type = "ARM";
+        addr = cpu->registers[R15] - 8;
     }
 
-    return num_clocks;
+    fprintf(stderr,
+            "Error: Illegal %s instruction encountered: %0*X at address %08X\n",
+            inst_type,
+            padlen,
+            inst,
+            addr);
+    exit(1);
 }
 
 int run_cpu(arm7tdmi *cpu)
