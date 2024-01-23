@@ -27,3 +27,4 @@ install SDL2 as follows:
 * ARM7TDMI Data Sheet
 * [Tonc](https://www.coranac.com/tonc/text/toc.htm)
 * [GBATEK](http://problemkaputt.de/gbatek.htm)
+* [GBA Tests](https://github.com/jsmolka/gba-tests)

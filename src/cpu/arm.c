@@ -158,7 +158,7 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool im
         {
             shifter_carry = cpu->cpsr & COND_C_BITMASK;
         }
-        else switch ((inst >> 5) & 0x2)
+        else switch ((inst >> 5) & 0x3)
         {
             case 0x0: // logical left
                 if (shift_amt > 31) // possible if shifting by register
