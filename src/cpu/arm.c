@@ -742,10 +742,10 @@ static int multiply(arm7tdmi *cpu, uint32_t inst)
 
     bool accumulate = (inst >> 21) & 1;
     bool set_conds  = (inst >> 20) & 1;
-    arm_register rd = (inst >> 16) & 0xff;
-    arm_register rn = (inst >> 12) & 0xff;
-    arm_register rs = (inst >> 8) & 0xff;
-    arm_register rm = inst & 0xff;
+    arm_register rd = (inst >> 16) & 0xf;
+    arm_register rn = (inst >> 12) & 0xf;
+    arm_register rs = (inst >> 8) & 0xf;
+    arm_register rm = inst & 0xf;
 
     prefetch(cpu);
 
