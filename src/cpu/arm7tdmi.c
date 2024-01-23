@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "cgba/cpu.h"
@@ -61,6 +62,26 @@ void prefetch(arm7tdmi *cpu)
 
     cpu->registers[R15] += thumb ? 2 : 4;
 }
+
+void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr)
+{
+    if (addr & 1) // THUMB state
+    {
+        // halfword-align the instruction
+        addr &= ~1;
+        cpu->cpsr |= T_BITMASK;
+    }
+    else // ARM state
+    {
+        cpu->cpsr &= ~T_BITMASK;
+    }
+
+    cpu->registers[R15] = addr;
+
+    // BX causes a pipeline flush and refill from [Rn]
+    reload_pipeline(cpu);
+}
+
 
 void panic_illegal_instruction(arm7tdmi *cpu)
 {

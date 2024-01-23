@@ -66,6 +66,71 @@ int operate_with_immediate(arm7tdmi *cpu)
     return 1; // 1S cycles
 }
 
+static int hi_register_op_or_bx(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    int op = (inst >> 8) & 0x3;
+    bool h1 = (inst >> 7) & 1;
+    bool h2 = (inst >> 6) & 1;
+
+    // the H flags determine whether we use
+    // a low (0-7) or hi (8-15) register
+    arm_register rd = (h1*0x8) | (inst & 0x7);
+    arm_register rs = (h2*0x8) | ((inst >> 3) & 0x7);
+
+    bool write_result = op == 0x0 || op == 0x2; // ADD, MOV
+    bool branch = op == 0x3; // BX
+
+    switch (op)
+    {
+        case 0x0: // ADD
+            cpu->registers[rd] += cpu->registers[rs];
+            break;
+
+        case 0x1: // CMP
+        {
+            uint32_t op1 = cpu->registers[rd];
+            uint32_t op2 = cpu->registers[rs];
+            uint32_t res = op1 - op2;
+            bool carry = op1 >= op2; // set if no borrow
+            // overflow into bit 31
+            bool overflow = (((op1 ^ op2) & (op1 ^ res)) >> 31) & 1;
+            cpu->cpsr = (cpu->cpsr & ~COND_FLAGS_MASK)
+                        | (res & COND_N_BITMASK)
+                        | (!res << COND_Z_SHIFT)
+                        | (carry << COND_C_SHIFT)
+                        | (overflow << COND_V_SHIFT);
+            break;
+        }
+
+        case 0x2: // MOV
+            cpu->registers[rd] = cpu->registers[rs];
+            break;
+
+        case 0x3: // BX
+            do_branch_and_exchange(cpu, cpu->registers[rs]);
+            break;
+    }
+
+    // branching has it's own pipeline reload logic
+    if (!branch)
+    {
+        // CMP doesn't flush the pipeline
+        if (rd == R15 && write_result)
+            reload_pipeline(cpu);
+        else
+            prefetch(cpu);
+    }
+
+    int num_clocks;
+    if ((rd == R15 && write_result) || branch)
+        num_clocks = 3; // 2S + 1N
+    else
+        num_clocks = 1; // 1S
+
+    return num_clocks;
+}
+
 int decode_and_execute_thumb(arm7tdmi *cpu)
 {
     int num_clocks = 0;
@@ -102,7 +167,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf800) == 0x4800) // PC relative load
         goto unimplemented;
     else if ((inst & 0xfc00) == 0x4400) // hi register operations/branch exchange
-        goto unimplemented;
+        num_clocks = hi_register_op_or_bx(cpu);
     else if ((inst & 0xfc00) == 0x4000) // ALU operations
         goto unimplemented;
     else if ((inst & 0xe000) == 0x2000) // move/compare/add/subtract immediate

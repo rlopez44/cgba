@@ -96,21 +96,7 @@ static int bx(arm7tdmi *cpu, uint32_t inst)
     arm_register rn = inst & 0xf;
     uint32_t addr = cpu->registers[rn];
 
-    if (addr & 1) // THUMB state
-    {
-        // halfword-align the instruction
-        addr &= ~1;
-        cpu->cpsr |= T_BITMASK;
-    }
-    else // ARM state
-    {
-        cpu->cpsr &= ~T_BITMASK;
-    }
-
-    cpu->registers[R15] = addr;
-
-    // BX causes a pipeline flush and refill from [Rn]
-    reload_pipeline(cpu);
+    do_branch_and_exchange(cpu, addr);
 
     // 2S + 1N cycles
     return 3;
