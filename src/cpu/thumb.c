@@ -1,8 +1,70 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
+
+int operate_with_immediate(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    int operation = (inst >> 11) & 0x3;
+    arm_register rd = (inst >> 8) & 0x7;
+    uint8_t offset = inst & 0xff;
+
+    bool write_result = operation != 0x1; // MOV, ADD, or SUB
+    bool logical_op   = !operation;       // MOV
+
+    prefetch(cpu);
+
+    bool carry = false;
+    bool overflow = false;
+    uint32_t result;
+    uint32_t op1 = cpu->registers[rd];
+    switch (operation)
+    {
+        case 0x0: // MOV
+            result = offset;
+            break;
+
+        case 0x1: // CMP
+        case 0x3: // SUB
+            result = op1 - offset;
+            carry = op1 >= offset; // set if no borrow
+            // overflow into bit 31
+            overflow = (((op1 ^ offset) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x2: // ADD
+            result = op1 + offset;
+            carry = offset > UINT32_MAX - op1;
+            overflow = ((~(op1 ^ offset) & (op1 ^ result)) >> 31) & 1;
+            break;
+    }
+
+    if (write_result)
+        cpu->registers[rd] = result;
+
+    uint32_t mask;
+    if (logical_op)
+    {
+        mask = ~(COND_N_BITMASK | COND_Z_BITMASK);
+        cpu->cpsr = (cpu->cpsr & mask)
+                    | (result & COND_N_BITMASK)
+                    | (!result << COND_Z_SHIFT);
+    }
+    else
+    {
+        mask = ~COND_FLAGS_MASK;
+        cpu->cpsr = (cpu->cpsr & mask)
+                    | (result & COND_N_BITMASK)
+                    | (!result << COND_Z_SHIFT)
+                    | (carry << COND_C_SHIFT)
+                    | (overflow << COND_V_SHIFT);
+    }
+
+    return 1; // 1S cycles
+}
 
 int decode_and_execute_thumb(arm7tdmi *cpu)
 {
@@ -44,7 +106,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xfc00) == 0x4000) // ALU operations
         goto unimplemented;
     else if ((inst & 0xe000) == 0x2000) // move/compare/add/subtract immediate
-        goto unimplemented;
+        num_clocks = operate_with_immediate(cpu);
     else if ((inst & 0xf800) == 0x1800) // add/subtract
         goto unimplemented;
     else if ((inst & 0xe000) == 0x0000) // move shifted register
