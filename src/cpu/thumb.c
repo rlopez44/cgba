@@ -5,7 +5,7 @@
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
 
-int operate_with_immediate(arm7tdmi *cpu)
+static int operate_with_immediate(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
     int operation = (inst >> 11) & 0x3;
