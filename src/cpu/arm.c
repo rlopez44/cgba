@@ -650,7 +650,9 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
 static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
 {
     bool to_spsr = inst & (1 << 22);
-    bool full_psr = inst & (1 << 16);
+    bool set_cntrl_bits = inst & (1 << 16);
+    bool set_flag_bits = inst & (1 << 19);
+    bool immediate = inst & (1 << 25);
     arm_cpu_mode cpu_mode = cpu->cpsr & CPU_MODE_MASK;
     arm_bankmode bank_mode = get_current_bankmode(cpu);
 
@@ -663,25 +665,20 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
     }
 
     uint32_t new_psr;
-    if (full_psr)
-    {
+    if (immediate)
+        barrel_shift(cpu, inst, &new_psr, true);
+    else
         new_psr = cpu->registers[inst & 0xf];
 
-        // control bits are protected in unprivileged user mode
-        if (cpu_mode == MODE_USR)
-            new_psr &= ~CNTRL_BITS_MASK;
+    uint32_t write_mask = 0;
+    // control bits are protected in unprivileged user mode
+    if (set_cntrl_bits && cpu_mode != MODE_USR)
+        write_mask |= CNTRL_BITS_MASK;
 
-        *dest_psr = new_psr;
-    }
-    else
-    {
-        if (inst & (1 << 25))
-            barrel_shift(cpu, inst, &new_psr, true);
-        else
-            new_psr = cpu->registers[inst & 0xf];
+    if (set_flag_bits)
+        write_mask |= COND_FLAGS_MASK;
 
-        *dest_psr = (*dest_psr & ~COND_FLAGS_MASK) | (new_psr & COND_FLAGS_MASK);
-    }
+    *dest_psr = (*dest_psr & ~write_mask) | (new_psr & write_mask);
 
     prefetch(cpu);
 
