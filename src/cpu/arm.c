@@ -58,32 +58,6 @@ static bool check_cond(arm7tdmi *cpu, uint32_t inst)
     return result;
 }
 
-static arm_bankmode get_current_bankmode(arm7tdmi *cpu)
-{
-    arm_bankmode mode;
-    switch (cpu->cpsr & CPU_MODE_MASK)
-    {
-        case MODE_USR:
-        case MODE_SYS:
-            mode = BANK_NONE;
-            break;
-
-        case MODE_FIQ: mode = BANK_FIQ; break;
-        case MODE_IRQ: mode = BANK_IRQ; break;
-        case MODE_SVC: mode = BANK_SVC; break;
-        case MODE_ABT: mode = BANK_ABT; break;
-        case MODE_UND: mode = BANK_UND; break;
-
-        default: // illegal mode, should not get here
-            fprintf(stderr,
-                    "Error: Illegal CPU mode encountered: %02x\n",
-                    cpu->cpsr & CPU_MODE_MASK);
-            exit(1);
-    }
-
-    return mode;
-}
-
 static void restore_cpsr(arm7tdmi *cpu)
 {
     arm_bankmode mode = get_current_bankmode(cpu);

@@ -82,6 +82,71 @@ void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr)
     reload_pipeline(cpu);
 }
 
+arm_bankmode get_current_bankmode(arm7tdmi *cpu)
+{
+    arm_bankmode mode;
+    switch (cpu->cpsr & CPU_MODE_MASK)
+    {
+        case MODE_USR:
+        case MODE_SYS:
+            mode = BANK_NONE;
+            break;
+
+        case MODE_FIQ: mode = BANK_FIQ; break;
+        case MODE_IRQ: mode = BANK_IRQ; break;
+        case MODE_SVC: mode = BANK_SVC; break;
+        case MODE_ABT: mode = BANK_ABT; break;
+        case MODE_UND: mode = BANK_UND; break;
+
+        default: // illegal mode, should not get here
+            fprintf(stderr,
+                    "Error: Illegal CPU mode encountered: %02x\n",
+                    cpu->cpsr & CPU_MODE_MASK);
+            exit(1);
+    }
+
+    return mode;
+}
+
+static void validate_register_number_or_die(int regno)
+{
+    if (regno > R15 || regno < R0)
+    {
+        fprintf(stderr, "Illegal register number accessed: %d\n", regno);
+        exit(1);
+    }
+}
+
+static uint32_t *get_register(arm7tdmi *cpu, int regno)
+{
+    arm_bankmode mode = get_current_bankmode(cpu);
+
+    bool not_banked = mode == BANK_NONE
+                      || regno < R8
+                      || (mode != BANK_FIQ && regno < R13)
+                      || regno == R15;
+
+    uint32_t *reg;
+    if (not_banked)
+        reg = cpu->registers + regno;
+    else
+        reg = cpu->banked_registers[mode] + regno - R8;
+
+    return reg;
+}
+
+uint32_t read_register(arm7tdmi *cpu, int regno)
+{
+    validate_register_number_or_die(regno);
+    return *get_register(cpu, regno);
+}
+
+void write_register(arm7tdmi *cpu, int regno, uint32_t value)
+{
+    validate_register_number_or_die(regno);
+    uint32_t *reg = get_register(cpu, regno);
+    *reg = value;
+}
 
 void panic_illegal_instruction(arm7tdmi *cpu)
 {
