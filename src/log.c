@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "cgba/log.h"
+#include "cpu/arm7tdmi.h"
 
 void log_cpu_state(arm7tdmi *cpu, FILE *fptr)
 {
@@ -11,22 +12,22 @@ void log_cpu_state(arm7tdmi *cpu, FILE *fptr)
             "%08x %08x %08x %08x %08x %08x %08x %08x %08x "
             "%08x %08x %08x %08x %08x %08x %08x CPSR: %08x "
             "| %08x %08x\n",
-            cpu->registers[R0],
-            cpu->registers[R1],
-            cpu->registers[R2],
-            cpu->registers[R3],
-            cpu->registers[R4],
-            cpu->registers[R5],
-            cpu->registers[R6],
-            cpu->registers[R7],
-            cpu->registers[R8],
-            cpu->registers[R9],
-            cpu->registers[R10],
-            cpu->registers[R11],
-            cpu->registers[R12],
-            cpu->registers[R13],
-            cpu->registers[R14],
-            cpu->registers[R15],
+            read_register(cpu, R0),
+            read_register(cpu, R1),
+            read_register(cpu, R2),
+            read_register(cpu, R3),
+            read_register(cpu, R4),
+            read_register(cpu, R5),
+            read_register(cpu, R6),
+            read_register(cpu, R7),
+            read_register(cpu, R8),
+            read_register(cpu, R9),
+            read_register(cpu, R10),
+            read_register(cpu, R11),
+            read_register(cpu, R12),
+            read_register(cpu, R13),
+            read_register(cpu, R14),
+            read_register(cpu, R15),
             cpu->cpsr,
             cpu->pipeline[0],
             cpu->pipeline[1]);

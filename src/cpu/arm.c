@@ -67,8 +67,8 @@ static void restore_cpsr(arm7tdmi *cpu)
 
 static int bx(arm7tdmi *cpu, uint32_t inst)
 {
-    arm_register rn = inst & 0xf;
-    uint32_t addr = cpu->registers[rn];
+    int rn = inst & 0xf;
+    uint32_t addr = read_register(cpu, rn);
 
     do_branch_and_exchange(cpu, addr);
 
@@ -103,7 +103,7 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool im
 
         // shifting by register -> bottom byte of Rs specifies shift amount
         shift_amt = shift_by_r
-                    ? cpu->registers[(inst >> 8) & 0xf] & 0xff
+                    ? read_register(cpu, (inst >> 8) & 0xf) & 0xff
                     : (inst >> 7) & 0x1f;
 
         // fetching Rs uses up first cycle, so prefetching
@@ -112,7 +112,7 @@ static bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool im
             prefetch(cpu);
 
         // calculate shift
-        op2 = cpu->registers[inst & 0xf]; // Rm
+        op2 = read_register(cpu, inst & 0xf); // Rm
 
         if (shift_by_r && !shift_amt) // Rs=0x0 -> no shift, C flag unaffected
         {
@@ -224,12 +224,7 @@ static int branch(arm7tdmi *cpu, uint32_t inst)
     {
         // point to instruction following the branch, R14[1:0] always cleared
         uint32_t old_pc = (cpu->registers[R15] - 4) & ~0x3;
-
-        arm_bankmode mode = get_current_bankmode(cpu);
-        if (mode == BANK_NONE)
-            cpu->registers[R14] = old_pc;
-        else
-            cpu->banked_registers[mode][BANK_R14] = old_pc;
+        write_register(cpu, R14, old_pc);
     }
 
     cpu->registers[R15] += offset;
@@ -245,8 +240,8 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     bool set_conds = inst & (1 << 20);
     uint8_t opcode = (inst >> 21) & 0xf;
 
-    arm_register rn = (inst >> 16) & 0xf;
-    arm_register rd = (inst >> 12) & 0xf;
+    int rn = (inst >> 16) & 0xf;
+    int rd = (inst >> 12) & 0xf;
 
     bool logical_op = opcode < 0x2
                       || opcode == 0x8
@@ -265,7 +260,7 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     bool shifter_carry = barrel_shift(cpu, inst, &op2, immediate);
 
     // operand1 is read after shifting is performed
-    uint32_t op1 = cpu->registers[rn];
+    uint32_t op1 = read_register(cpu, rn);
 
     bool op_carry = false, op_overflow = false; // only used by arithmetic operations
     switch (opcode)
@@ -365,7 +360,7 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     }
 
     if (write_result)
-        cpu->registers[rd] = result;
+        write_register(cpu, rd, result);
 
     // mode change and possible pipeline flush
     if (rd == R15)
@@ -408,8 +403,8 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         exit(1);
     }
 
-    arm_register rn = (inst >> 16) & 0xf;
-    uint32_t base = cpu->registers[rn];
+    int rn = (inst >> 16) & 0xf;
+    uint32_t base = read_register(cpu, rn);
     uint32_t curr_addr = base;
 
     prefetch(cpu);
@@ -422,7 +417,7 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         curr_addr -= 4*num_transfers;
 
     bool effective_preincrement = (preindex && add) || (!preindex && !add);
-    for (arm_register i = 0; i < ARM_NUM_REGISTERS; ++i)
+    for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
     {
         // bit i not set -> no transfer for register Ri
         if (!(inst & (1 << i)))
@@ -440,9 +435,9 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
             curr_addr += 4;
 
         if (load)
-            cpu->registers[i] = read_word(cpu->mem, curr_addr);
+            write_register(cpu, i, read_word(cpu->mem, curr_addr));
         else
-            write_word(cpu->mem, curr_addr, cpu->registers[i]);
+            write_word(cpu->mem, curr_addr, read_register(cpu, i));
 
         if (!effective_preincrement)
             curr_addr += 4;
@@ -452,9 +447,9 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         reload_pipeline(cpu);
 
     if (write_back && add)
-        cpu->registers[rn] = curr_addr;
+        write_register(cpu, rn, curr_addr);
     else if (write_back)
-        cpu->registers[rn] = base - 4*num_transfers;
+        write_register(cpu, rn, base - 4*num_transfers);
 
     if (load && pc_trans)
         num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
@@ -476,8 +471,8 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     bool write_back = inst & (1 << 21);
     bool load = inst & (1 << 20);
 
-    arm_register rn = (inst >> 16) & 0xf;
-    arm_register rd = (inst >> 12) & 0xf;
+    int rn = (inst >> 16) & 0xf;
+    int rd = (inst >> 12) & 0xf;
 
     uint32_t offset;
     if (immediate)
@@ -485,7 +480,7 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     else
         barrel_shift(cpu, inst, &offset, false); // always register by immediate
 
-    uint32_t transfer_addr = cpu->registers[rn];
+    uint32_t transfer_addr = read_register(cpu, rn);
 
     if (preindex)
     {
@@ -501,7 +496,7 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     {
         if (byte_trans)
         {
-            cpu->registers[rd] = read_byte(cpu->mem, transfer_addr);
+            write_register(cpu, rd, read_byte(cpu->mem, transfer_addr));
         }
         else
         {
@@ -511,10 +506,12 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
             int rot_amt = 8 * boundary_offset;
             uint32_t word = read_word(cpu->mem, transfer_addr);
 
+            uint32_t writeval;
             if (rot_amt)
-                cpu->registers[rd] = word >> rot_amt | word << (32 - rot_amt);
+                writeval = word >> rot_amt | word << (32 - rot_amt);
             else
-                cpu->registers[rd] = word;
+                writeval = word;
+            write_register(cpu, rd, writeval);
         }
 
         if (rd == R15)
@@ -525,10 +522,11 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     }
     else
     {
+        uint32_t writeval = read_register(cpu, rd);
         if (byte_trans)
-            write_byte(cpu->mem, transfer_addr, cpu->registers[rd]);
+            write_byte(cpu->mem, transfer_addr, writeval);
         else
-            write_word(cpu->mem, transfer_addr, cpu->registers[rd]);
+            write_word(cpu->mem, transfer_addr, writeval);
 
         num_clocks = 2; // 2N cycles
     }
@@ -537,10 +535,12 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
     // post-index transfers always write back
     if (write_back || !preindex)
     {
+        uint32_t writeval = read_register(cpu, rn);
         if (add_offset)
-            cpu->registers[rn] += offset;
+            writeval += offset;
         else
-            cpu->registers[rn] -= offset;
+            writeval -= offset;
+        write_register(cpu, rn, writeval);
     }
 
     return num_clocks;
@@ -556,16 +556,16 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
     bool signed_ = inst & (1 << 6);
     bool halfword = inst & (1 << 5);
 
-    arm_register rn = (inst >> 16) & 0xf;
-    arm_register rd = (inst >> 12) & 0xf;
+    int rn = (inst >> 16) & 0xf;
+    int rd = (inst >> 12) & 0xf;
 
     uint32_t offset;
     if (immediate) // 8-bit immediate
         offset = ((inst >> 4) & 0xf0) | (inst & 0xf);
     else
-        offset = cpu->registers[inst & 0xf];
+        offset = read_register(cpu, inst & 0xf);
 
-    uint32_t transfer_addr = cpu->registers[rn];
+    uint32_t transfer_addr = read_register(cpu, rn);
 
     if (preindex)
     {
@@ -593,7 +593,7 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
                 data |= 0xffffff00;
         }
 
-        cpu->registers[rd] = data;
+        write_register(cpu, rd, data);
 
         if (rd == R15)
             reload_pipeline(cpu);
@@ -604,17 +604,19 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
     else // store: only one instruction: STRH (S=0, H=1)
     {
         num_clocks = 2; // 2N cycles
-        write_halfword(cpu->mem, transfer_addr, cpu->registers[rd]);
+        write_halfword(cpu->mem, transfer_addr, read_register(cpu, rd));
     }
 
     // write back to base register if needed
     // post-index transfers always write back
     if (write_back || !preindex)
     {
+        uint32_t writeval = read_register(cpu, rn);
         if (add_offset)
-            cpu->registers[rn] += offset;
+            writeval += offset;
         else
-            cpu->registers[rn] -= offset;
+            writeval -= offset;
+        write_register(cpu, rn, writeval);
     }
 
     return num_clocks;
@@ -642,7 +644,7 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
     if (immediate)
         barrel_shift(cpu, inst, &new_psr, true);
     else
-        new_psr = cpu->registers[inst & 0xf];
+        new_psr = read_register(cpu, inst & 0xf);
 
     uint32_t write_mask = 0;
     // control bits are protected in unprivileged user mode
@@ -699,19 +701,19 @@ static int multiply(arm7tdmi *cpu, uint32_t inst)
 
     bool accumulate = (inst >> 21) & 1;
     bool set_conds  = (inst >> 20) & 1;
-    arm_register rd = (inst >> 16) & 0xf;
-    arm_register rn = (inst >> 12) & 0xf;
-    arm_register rs = (inst >> 8) & 0xf;
-    arm_register rm = inst & 0xf;
+    int rd = (inst >> 16) & 0xf;
+    int rn = (inst >> 12) & 0xf;
+    int rs = (inst >> 8) & 0xf;
+    int rm = inst & 0xf;
 
     prefetch(cpu);
 
-    uint32_t rs_value = cpu->registers[rs];
-    uint32_t result = cpu->registers[rm] * rs_value;
+    uint32_t rs_value = read_register(cpu, rs);
+    uint32_t result = read_register(cpu, rm) * rs_value;
     if (accumulate)
-        result += cpu->registers[rn];
+        result += read_register(cpu, rn);
 
-    cpu->registers[rd] = result;
+    write_register(cpu, rd, result);
 
     if (set_conds)
     {
