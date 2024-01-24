@@ -9,7 +9,7 @@ static int operate_with_immediate(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
     int operation = (inst >> 11) & 0x3;
-    arm_register rd = (inst >> 8) & 0x7;
+    int rd = (inst >> 8) & 0x7;
     uint8_t offset = inst & 0xff;
 
     bool write_result = operation != 0x1; // MOV, ADD, or SUB
@@ -20,7 +20,7 @@ static int operate_with_immediate(arm7tdmi *cpu)
     bool carry = false;
     bool overflow = false;
     uint32_t result;
-    uint32_t op1 = cpu->registers[rd];
+    uint32_t op1 = read_register(cpu, rd);
     switch (operation)
     {
         case 0x0: // MOV
@@ -43,7 +43,7 @@ static int operate_with_immediate(arm7tdmi *cpu)
     }
 
     if (write_result)
-        cpu->registers[rd] = result;
+        write_register(cpu, rd, result);
 
     uint32_t mask;
     if (logical_op)
@@ -75,22 +75,23 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
 
     // the H flags determine whether we use
     // a low (0-7) or hi (8-15) register
-    arm_register rd = (h1*0x8) | (inst & 0x7);
-    arm_register rs = (h2*0x8) | ((inst >> 3) & 0x7);
+    int rd = (h1*0x8) | (inst & 0x7);
+    int rs = (h2*0x8) | ((inst >> 3) & 0x7);
 
     bool write_result = op == 0x0 || op == 0x2; // ADD, MOV
     bool branch = op == 0x3; // BX
 
+    uint32_t op1 = read_register(cpu, rd);
+    uint32_t op2 = read_register(cpu, rs);
+
     switch (op)
     {
         case 0x0: // ADD
-            cpu->registers[rd] += cpu->registers[rs];
+            write_register(cpu, rd, op1 + op2);
             break;
 
         case 0x1: // CMP
         {
-            uint32_t op1 = cpu->registers[rd];
-            uint32_t op2 = cpu->registers[rs];
             uint32_t res = op1 - op2;
             bool carry = op1 >= op2; // set if no borrow
             // overflow into bit 31
@@ -104,11 +105,11 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
         }
 
         case 0x2: // MOV
-            cpu->registers[rd] = cpu->registers[rs];
+            write_register(cpu, rd, op2);
             break;
 
         case 0x3: // BX
-            do_branch_and_exchange(cpu, cpu->registers[rs]);
+            do_branch_and_exchange(cpu, read_register(cpu, rs));
             break;
     }
 
@@ -135,16 +136,16 @@ static int load_address(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
     bool sp = (inst >> 11) & 1;
-    arm_register rd = (inst >> 8) & 0x7;
+    int rd = (inst >> 8) & 0x7;
     uint16_t imm_val = (inst & 0xff) << 2;
 
     uint32_t source;
     if (sp)
-        source = cpu->registers[R13];
+        source = read_register(cpu, R13);
     else // bit 1 of PC is always read as 0
         source = cpu->registers[R15] & ~0x2u;
 
-    cpu->registers[rd] = source + imm_val;
+    write_register(cpu, rd, source + imm_val);
 
     prefetch(cpu);
 
