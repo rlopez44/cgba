@@ -131,6 +131,26 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int load_address(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool sp = (inst >> 11) & 1;
+    arm_register rd = (inst >> 8) & 0x7;
+    uint16_t imm_val = (inst & 0xff) << 2;
+
+    uint32_t source;
+    if (sp)
+        source = cpu->registers[R13];
+    else // bit 1 of PC is always read as 0
+        source = cpu->registers[R15] & ~0x2u;
+
+    cpu->registers[rd] = source + imm_val;
+
+    prefetch(cpu);
+
+    return 1; // 1S
+}
+
 int decode_and_execute_thumb(arm7tdmi *cpu)
 {
     int num_clocks = 0;
@@ -157,7 +177,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf000) == 0x9000) // SP relative load/store
         goto unimplemented;
     else if ((inst & 0xf000) == 0xa000) // load address
-        goto unimplemented;
+        num_clocks = load_address(cpu);
     else if ((inst & 0xe000) == 0x6000) // load/store w/immediate offset
         goto unimplemented;
     else if ((inst & 0xf200) == 0x5000) // load/store w/register offset
