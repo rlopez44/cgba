@@ -622,6 +622,28 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
     return num_clocks;
 }
 
+// transfer data from a PSR to a register
+static int mrs_transfer(arm7tdmi *cpu)
+{
+    uint32_t inst = cpu->pipeline[0];
+    bool from_spsr = inst & (1 << 22);
+    int rd = (inst >> 12) & 0xf;
+    arm_bankmode bank_mode = get_current_bankmode(cpu);
+    uint32_t src_psr = from_spsr ? cpu->spsr[bank_mode] : cpu->cpsr;
+
+    if (bank_mode == BANK_NONE && from_spsr)
+    {
+        fprintf(stderr, "Error: PSR transfer from SPSR attempted in user mode\n");
+        exit(1);
+    }
+
+    write_register(cpu, rd, src_psr);
+    prefetch(cpu);
+
+    // 1S cycles
+    return 1;
+}
+
 // transfer data from a register or immediate value to a PSR
 static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
 {
@@ -792,7 +814,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0e400090) == 0x00400090) // halfword data transfer immediate
         num_clocks = halfword_transfer(cpu, inst, true);
     else if ((inst & 0x0fbf0000) == 0x010f0000) // PSR transfer MRS
-        goto unimplemented;
+        num_clocks = mrs_transfer(cpu);
     else if ((inst & 0x0db0f000) == 0x0120f000) // PSR transfer MSR
         num_clocks = msr_transfer(cpu, inst);
     else if ((inst & 0x0c000000) == 0x00000000) // data processing
