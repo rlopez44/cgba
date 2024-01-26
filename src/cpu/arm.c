@@ -813,6 +813,43 @@ static int multiply(arm7tdmi *cpu, uint32_t inst)
     return 1 + array_cycles + accumulate + 1*mul_long;
 }
 
+static int single_data_swap(arm7tdmi *cpu)
+{
+    uint32_t inst = cpu->pipeline[0];
+    bool byte = inst & (1 << 22);
+    int rn = (inst >> 16) & 0xf;
+    int rd = (inst >> 12) & 0xf;
+    int rm = inst & 0xf;
+
+    uint32_t addr = read_register(cpu, rn);
+    uint32_t reg_value = read_register(cpu, rm);
+
+    prefetch(cpu);
+
+    uint32_t mem_value;
+    if (byte)
+    {
+        mem_value = read_byte(cpu->mem, addr);
+        write_byte(cpu->mem, addr, reg_value);
+    }
+    else
+    {
+        mem_value = read_word(cpu->mem, addr);
+
+        // unaligned read -> addressed byte into bits 0-7
+        int rot_amt = 8 * (addr & 0x3);
+        if (rot_amt)
+            mem_value = mem_value >> rot_amt | mem_value << (32 - rot_amt);
+
+        write_word(cpu->mem, addr, reg_value);
+    }
+
+    write_register(cpu, rd, mem_value);
+
+    // 1S + 2N + 1I
+    return 4;
+}
+
 /*
  * Enter the software interrupt trap by doing the following:
  * - save address to instruction following SWI into R14_svc
@@ -866,7 +903,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0c000000) == 0x04000000) // single data transfer
         num_clocks = single_data_transfer(cpu, inst);
     else if ((inst & 0x0f800ff0) == 0x01000090) // single data swap
-        goto unimplemented;
+        num_clocks = single_data_swap(cpu);
     else if ((inst & 0x0f0000f0) == 0x00000090) // multiply and multiply long
         num_clocks = multiply(cpu, inst);
     else if ((inst & 0x0e400f90) == 0x00000090) // halfword data transfer register
