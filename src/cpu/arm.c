@@ -443,7 +443,7 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
             curr_addr += 4;
     }
 
-    if (pc_trans)
+    if (pc_trans && load)
         reload_pipeline(cpu);
 
     if (write_back && add)
