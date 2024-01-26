@@ -626,9 +626,9 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
         write_halfword(cpu->mem, transfer_addr, read_register(cpu, rd));
     }
 
-    // write back to base register if needed
-    // post-index transfers always write back
-    if (write_back || !preindex)
+    // Note: LDRH/LDRSH never writes back if the base
+    // and destination registers are the same.
+    if ((!load || rd != rn) && (write_back || !preindex))
     {
         uint32_t writeval = read_register(cpu, rn);
         if (add_offset)
