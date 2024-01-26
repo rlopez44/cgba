@@ -583,8 +583,27 @@ static int halfword_transfer(arm7tdmi *cpu, uint32_t inst, bool immediate)
         if (halfword)
         {
             data = read_halfword(cpu->mem, transfer_addr);
-            if (signed_ && data & 0x8000)
-                data |= 0xffff0000;
+
+            // If the address is not halfword-aligned...
+            // LDRH:  aligned data is rotated so the addressed
+            //        byte is in bits 0-7 of Rd
+            // LDRSH: the addressed byte is sign-extended
+            bool unaligned = transfer_addr & 1;
+            if (unaligned && signed_)
+            {
+                data = (data >> 8) & 0xff;
+                if (data & 0x80)
+                    data |= 0xffffff00;
+            }
+            else if (signed_)
+            {
+                if (data & 0x8000)
+                    data |= 0xffff0000;
+            }
+            else if (unaligned)
+            {
+                data = data >> 8 | data << 24;
+            }
         }
         else
         {
