@@ -389,19 +389,15 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
 static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
 {
     int num_clocks;
-    bool preindex    = inst & (1 << 24);
-    bool add         = inst & (1 << 23);
-    bool mode_change = inst & (1 << 22);
-    bool write_back  = inst & (1 << 21);
-    bool load        = inst & (1 << 20);
-    bool pc_trans    = inst & (1 << 15);
+    bool preindex   = inst & (1 << 24);
+    bool add        = inst & (1 << 23);
+    bool sbit       = inst & (1 << 22);
+    bool write_back = inst & (1 << 21);
+    bool load       = inst & (1 << 20);
+    bool pc_trans   = inst & (1 << 15);
 
-    // TODO: add support for mode changes when S bit is set
-    if (mode_change)
-    {
-        fprintf(stderr, "Error: block data transfer with S bit set not supported\n");
-        exit(1);
-    }
+    bool mode_change = sbit && pc_trans && load;
+    bool user_bank_tans = sbit && !mode_change;
 
     int rn = (inst >> 16) & 0xf;
     uint32_t base = read_register(cpu, rn);
@@ -434,13 +430,39 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         if (effective_preincrement)
             curr_addr += 4;
 
+        uint32_t transfer_data;
         if (load)
-            write_register(cpu, i, read_word(cpu->mem, curr_addr));
+        {
+            transfer_data = read_word(cpu->mem, curr_addr);
+            if (user_bank_tans)
+                cpu->registers[i] = transfer_data;
+            else
+                write_register(cpu, i, transfer_data);
+        }
         else
-            write_word(cpu->mem, curr_addr, read_register(cpu, i));
+        {
+            if (user_bank_tans)
+                transfer_data = cpu->registers[i];
+            else
+                transfer_data = read_register(cpu, i);
+
+            write_word(cpu->mem, curr_addr, transfer_data);
+        }
 
         if (!effective_preincrement)
             curr_addr += 4;
+    }
+
+    if (mode_change)
+    {
+        arm_bankmode mode = get_current_bankmode(cpu);
+        if (mode == BANK_NONE)
+        {
+            fprintf(stderr, "Error: attempted LDM mode change in user mode\n");
+            exit(1);
+        }
+
+        cpu->cpsr = cpu->spsr[mode];
     }
 
     if (pc_trans && load)
