@@ -392,86 +392,126 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
     bool preindex   = inst & (1 << 24);
     bool add        = inst & (1 << 23);
     bool sbit       = inst & (1 << 22);
-    bool write_back = inst & (1 << 21);
     bool load       = inst & (1 << 20);
-    bool pc_trans   = inst & (1 << 15);
 
-    bool mode_change = sbit && pc_trans && load;
-    bool user_bank_tans = sbit && !mode_change;
+    int register_list = inst & 0xffff;
+
+    bool effective_preincrement = (preindex && add) || (!preindex && !add);
 
     int rn = (inst >> 16) & 0xf;
     uint32_t base = read_register(cpu, rn);
-    uint32_t curr_addr = base;
 
     prefetch(cpu);
 
-    // we need to count the number of registers to be transferred because
-    // LDM/STM start at the lowest address of the block and fill upward
-    int num_transfers = count_set_bits(inst & 0xffff);
+    uint32_t curr_addr = base;
 
-    if (!add)
-        curr_addr -= 4*num_transfers;
+    bool pc_trans;
+    int num_transfers;
 
-    bool effective_preincrement = (preindex && add) || (!preindex && !add);
-    for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
+    if (register_list)
     {
-        // bit i not set -> no transfer for register Ri
-        if (!(inst & (1 << i)))
-            continue;
+        pc_trans = inst & (1 << 15);
 
-        // TODO: inclusion of the base in the register list
-        if (i == rn && !load)
+        bool write_back = inst & (1 << 21);
+        bool mode_change = sbit && pc_trans && load;
+        bool user_bank_trans = sbit && !mode_change;
+
+        // we need to count the number of registers to be transferred because
+        // LDM/STM start at the lowest address of the block and fill upward
+        num_transfers = count_set_bits(register_list);
+
+        if (!add)
+            curr_addr -= 4*num_transfers;
+
+        for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
         {
-            fprintf(stderr, "Error: STM with register in register list at %08X\n",
-                    cpu->registers[R15] - 12);
-            exit(1);
+            // bit i not set -> no transfer for register Ri
+            // except for the empty register list edge case
+            if (!(inst & (1 << i)))
+                continue;
+
+            // TODO: inclusion of the base in the register list
+            if (i == rn && !load)
+            {
+                fprintf(stderr, "Error: STM with register in register list at %08X\n",
+                        cpu->registers[R15] - 12);
+                exit(1);
+            }
+
+            if (effective_preincrement)
+                curr_addr += 4;
+
+            uint32_t transfer_data;
+            if (load)
+            {
+                transfer_data = read_word(cpu->mem, curr_addr);
+                if (user_bank_trans)
+                    cpu->registers[i] = transfer_data;
+                else
+                    write_register(cpu, i, transfer_data);
+            }
+            else
+            {
+                if (user_bank_trans)
+                    transfer_data = cpu->registers[i];
+                else
+                    transfer_data = read_register(cpu, i);
+
+                write_word(cpu->mem, curr_addr, transfer_data);
+            }
+
+            if (!effective_preincrement)
+                curr_addr += 4;
         }
+
+        if (mode_change)
+        {
+            arm_bankmode mode = get_current_bankmode(cpu);
+            if (mode == BANK_NONE)
+            {
+                fprintf(stderr, "Error: attempted LDM mode change in user mode\n");
+                exit(1);
+            }
+
+            cpu->cpsr = cpu->spsr[mode];
+        }
+
+        if ((pc_trans || !num_transfers) && load)
+            reload_pipeline(cpu);
+
+        if (write_back && add)
+            write_register(cpu, rn, curr_addr);
+        else if (write_back)
+            write_register(cpu, rn, base - 4*num_transfers);
+    }
+    else
+    {
+        // edge case: empty register list transfers R15 and writes
+        // back to Rn with offset +/-0x40 for increment/decrement
+        pc_trans = true;
+        num_transfers = 1;
+
+        if (!add)
+            curr_addr -= 0x40;
 
         if (effective_preincrement)
             curr_addr += 4;
 
-        uint32_t transfer_data;
         if (load)
         {
-            transfer_data = read_word(cpu->mem, curr_addr);
-            if (user_bank_tans)
-                cpu->registers[i] = transfer_data;
-            else
-                write_register(cpu, i, transfer_data);
+            cpu->registers[R15] = read_word(cpu->mem, curr_addr);
+            reload_pipeline(cpu);
         }
         else
         {
-            if (user_bank_tans)
-                transfer_data = cpu->registers[i];
-            else
-                transfer_data = read_register(cpu, i);
-
-            write_word(cpu->mem, curr_addr, transfer_data);
+            write_word(cpu->mem, curr_addr, cpu->registers[R15]);
         }
 
-        if (!effective_preincrement)
-            curr_addr += 4;
+        if (add)
+            write_register(cpu, rn, base + 0x40);
+        else
+            write_register(cpu, rn, base - 0x40);
     }
-
-    if (mode_change)
-    {
-        arm_bankmode mode = get_current_bankmode(cpu);
-        if (mode == BANK_NONE)
-        {
-            fprintf(stderr, "Error: attempted LDM mode change in user mode\n");
-            exit(1);
-        }
-
-        cpu->cpsr = cpu->spsr[mode];
-    }
-
-    if (pc_trans && load)
-        reload_pipeline(cpu);
-
-    if (write_back && add)
-        write_register(cpu, rn, curr_addr);
-    else if (write_back)
-        write_register(cpu, rn, base - 4*num_transfers);
 
     if (load && pc_trans)
         num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
