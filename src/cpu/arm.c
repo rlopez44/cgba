@@ -416,9 +416,17 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         bool mode_change = sbit && pc_trans && load;
         bool user_bank_trans = sbit && !mode_change;
 
+        bool base_in_rlist = register_list & (1 << rn);
+
         // we need to count the number of registers to be transferred because
         // LDM/STM start at the lowest address of the block and fill upward
         num_transfers = count_set_bits(register_list);
+
+        uint32_t modified_base = base;
+        if (add)
+            modified_base += 4*num_transfers;
+        else
+            modified_base -= 4*num_transfers;
 
         if (!add)
             curr_addr -= 4*num_transfers;
@@ -429,14 +437,6 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
             // except for the empty register list edge case
             if (!(inst & (1 << i)))
                 continue;
-
-            // TODO: inclusion of the base in the register list
-            if (i == rn && !load)
-            {
-                fprintf(stderr, "Error: STM with register in register list at %08X\n",
-                        cpu->registers[R15] - 12);
-                exit(1);
-            }
 
             if (effective_preincrement)
                 curr_addr += 4;
@@ -452,7 +452,17 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
             }
             else
             {
-                if (user_bank_trans)
+                // STM with base in register list:
+                // first register in list -> original base stored
+                // second or later in list -> modified base stored
+                int mask = (1 << rn) - 1;
+                bool first_in_rlist = !(register_list & mask);
+
+                if (i == rn && first_in_rlist)
+                    transfer_data = base;
+                else if (i == rn)
+                    transfer_data = modified_base;
+                else if (user_bank_trans)
                     transfer_data = cpu->registers[i];
                 else
                     transfer_data = read_register(cpu, i);
@@ -479,10 +489,10 @@ static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
         if ((pc_trans || !num_transfers) && load)
             reload_pipeline(cpu);
 
-        if (write_back && add)
-            write_register(cpu, rn, curr_addr);
-        else if (write_back)
-            write_register(cpu, rn, base - 4*num_transfers);
+        // LDM: write-back value is overwritten by transfer
+        // when the base is included in the register list
+        if (write_back && !(load && base_in_rlist))
+            write_register(cpu, rn, modified_base);
     }
     else
     {

@@ -22,6 +22,11 @@ install SDL2 as follows:
 * Debian/Ubuntu: `apt install libsdl2-dev`
 * MacOS (Homebrew): `brew install sdl2`
 
+# Test ROM Coverage
+The emulator passes the following test ROMs:
+* [GBA Tests](https://github.com/jsmolka/gba-tests)
+    * `arm/arm.gba`
+
 # References
 * [*Decoding the ARM7TDMI Instruction Set (Game Boy Advance)*](https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/)
 * ARM7TDMI Data Sheet
