@@ -1,6 +1,7 @@
 #ifndef CGBA_ARM7TDMI_H
 #define CGBA_ARM7TDMI_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "cgba/cpu.h"
 
@@ -11,6 +12,8 @@ void reload_pipeline(arm7tdmi *cpu);
 void prefetch(arm7tdmi *cpu);
 
 arm_bankmode get_current_bankmode(arm7tdmi *cpu);
+
+bool check_cond(arm7tdmi *cpu);
 
 int decode_and_execute_arm(arm7tdmi *cpu);
 

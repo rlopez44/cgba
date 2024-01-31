@@ -6,6 +6,29 @@
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
+static int conditional_branch(arm7tdmi *cpu)
+{
+    if (!check_cond(cpu))
+    {
+        prefetch(cpu);
+        return 1; // 1S
+    }
+
+    uint16_t inst = cpu->pipeline[0];
+    // sign-extended 9-bit offset
+    uint32_t offset = inst & 0xff;
+    if (offset & 0x80)
+        offset |= 0xffffff00;
+
+    offset <<= 1;
+
+    cpu->registers[R15] += offset;
+    reload_pipeline(cpu);
+
+    // 2S + 1N cycles
+    return 3;
+}
+
 static int operate_with_immediate(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -192,7 +215,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf800) == 0xe000) // unconditional branch
         goto unimplemented;
     else if ((inst & 0xf000) == 0xd000) // conditional branch
-        goto unimplemented;
+        num_clocks = conditional_branch(cpu);
     else if ((inst & 0xf000) == 0xc000) // multiple load/store
         goto unimplemented;
     else if ((inst & 0xf000) == 0xf000) // long branch w/link

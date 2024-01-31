@@ -17,47 +17,6 @@ static int count_set_bits(uint32_t n)
     return nset;
 }
 
-// decode ARM condition field
-static bool check_cond(arm7tdmi *cpu, uint32_t inst)
-{
-    bool n_set = cpu->cpsr & COND_N_BITMASK;
-    bool z_set = cpu->cpsr & COND_Z_BITMASK;
-    bool c_set = cpu->cpsr & COND_C_BITMASK;
-    bool v_set = cpu->cpsr & COND_V_BITMASK;
-
-    bool result;
-    switch ((inst >> 28) & 0xf)
-    {
-        case 0x0: result = z_set; break;
-        case 0x1: result = !z_set; break;
-
-        case 0x2: result = c_set; break;
-        case 0x3: result = !c_set; break;
-
-        case 0x4: result = n_set; break;
-        case 0x5: result = !n_set; break;
-
-        case 0x6: result = v_set; break;
-        case 0x7: result = !v_set; break;
-
-        case 0x8: result = c_set && !z_set; break;
-        case 0x9: result = !c_set || z_set; break;
-
-        case 0xa: result = n_set == v_set; break;
-        case 0xb: result = n_set != v_set; break;
-
-        case 0xc: result = !z_set && (n_set == v_set); break;
-        case 0xd: result = z_set || (n_set != v_set); break;
-
-        case 0xe: result = true; break;
-
-        // 0b1111 is reserved and should not be used
-        case 0xf: result = false; break;
-    }
-
-    return result;
-}
-
 static void restore_cpsr(arm7tdmi *cpu)
 {
     arm_bankmode mode = get_current_bankmode(cpu);
@@ -959,18 +918,17 @@ static int software_interrupt(arm7tdmi *cpu)
 
 int decode_and_execute_arm(arm7tdmi *cpu)
 {
-    uint32_t inst = cpu->pipeline[0];
     // all instructions can be conditionally executed
-    if (!check_cond(cpu, inst))
+    if (!check_cond(cpu))
     {
-        // instruction takes on sequential cycle to prefetch
         prefetch(cpu);
-        return 1;
+        return 1; // 1S
     }
 
     // decoding is going to involve a lot of magic numbers
     // See references in `README.md` for encoding documentation
     int num_clocks = 0;
+    uint32_t inst = cpu->pipeline[0];
     if ((inst & 0x0ffffff0) == 0x012fff10)      // branch and exchange
         num_clocks = bx(cpu, inst);
     else if ((inst & 0x0e000000) == 0x08000000) // block data transfer
