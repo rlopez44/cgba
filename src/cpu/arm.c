@@ -65,6 +65,15 @@ static void restore_cpsr(arm7tdmi *cpu)
         cpu->cpsr = cpu->spsr[mode];
 }
 
+static void undefined_instruction_trap(arm7tdmi *cpu)
+{
+    fprintf(stderr,
+            "Error: ARM undefined instruction trap encountered %08X at address %08X\n",
+            cpu->pipeline[0],
+            cpu->registers[R15] - 8);
+    exit(1);
+}
+
 static int bx(arm7tdmi *cpu, uint32_t inst)
 {
     int rn = inst & 0xf;
@@ -971,7 +980,7 @@ int decode_and_execute_arm(arm7tdmi *cpu)
     else if ((inst & 0x0f000000) == 0x0f000000) // software interrupt
         num_clocks = software_interrupt(cpu);
     else if ((inst & 0x0e000010) == 0x06000010) // undefined
-        goto unimplemented;
+        undefined_instruction_trap(cpu);
     else if ((inst & 0x0c000000) == 0x04000000) // single data transfer
         num_clocks = single_data_transfer(cpu, inst);
     else if ((inst & 0x0f800ff0) == 0x01000090) // single data swap
@@ -992,12 +1001,4 @@ int decode_and_execute_arm(arm7tdmi *cpu)
         panic_illegal_instruction(cpu);
 
     return num_clocks;
-
-// temporary until all instructions are implemented
-unimplemented:
-    fprintf(stderr,
-            "Error: Unimplemented ARM instruction encountered: %08X at address %08X\n",
-            inst,
-            cpu->registers[R15] - 8);
-    exit(1);
 }
