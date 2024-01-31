@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "arm7tdmi.h"
 #include "cgba/cpu.h"
+#include "cgba/memory.h"
 
 static int operate_with_immediate(arm7tdmi *cpu)
 {
@@ -152,6 +153,33 @@ static int load_address(arm7tdmi *cpu)
     return 1; // 1S
 }
 
+static int pc_relative_load(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    uint32_t imm = (inst & 0xff) << 2; // 10-bit immediate
+    int rd = (inst >> 8) & 0x7;
+    uint32_t base = cpu->registers[R15] & ~0x2u;
+    uint32_t data = read_word(cpu->mem, base + imm);
+
+    write_register(cpu, rd, data);
+
+    int num_clocks;
+    if (rd == R15)
+    {
+        reload_pipeline(cpu);
+        // 2S + 2N + 1I
+        num_clocks = 5;
+    }
+    else
+    {
+        prefetch(cpu);
+        // 1S + 1N + 1I
+        num_clocks = 3;
+    }
+
+    return num_clocks;
+}
+
 int decode_and_execute_thumb(arm7tdmi *cpu)
 {
     int num_clocks = 0;
@@ -186,7 +214,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf200) == 0x5200) // load/store sign-extended byte/halfword
         goto unimplemented;
     else if ((inst & 0xf800) == 0x4800) // PC relative load
-        goto unimplemented;
+        num_clocks = pc_relative_load(cpu);
     else if ((inst & 0xfc00) == 0x4400) // hi register operations/branch exchange
         num_clocks = hi_register_op_or_bx(cpu);
     else if ((inst & 0xfc00) == 0x4000) // ALU operations
