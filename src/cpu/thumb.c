@@ -6,6 +6,28 @@
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
+static int do_branch(arm7tdmi *cpu, uint32_t offset)
+{
+    cpu->registers[R15] += offset;
+    reload_pipeline(cpu);
+
+    // 2S + 1N cycles
+    return 3;
+}
+
+static int unconditional_branch(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    // sign-extended 12-bit offset
+    uint32_t offset = inst & 0x7ff;
+    if (offset & (1 << 10))
+        offset |= ~0x7ffu;
+
+    offset <<= 1;
+
+    return do_branch(cpu, offset);
+}
+
 static int conditional_branch(arm7tdmi *cpu)
 {
     if (!check_cond(cpu))
@@ -22,11 +44,7 @@ static int conditional_branch(arm7tdmi *cpu)
 
     offset <<= 1;
 
-    cpu->registers[R15] += offset;
-    reload_pipeline(cpu);
-
-    // 2S + 1N cycles
-    return 3;
+    return do_branch(cpu, offset);
 }
 
 static int operate_with_immediate(arm7tdmi *cpu)
@@ -213,7 +231,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     if ((inst & 0xff00) == 0xdf00)      // software interrupt
         goto unimplemented;
     else if ((inst & 0xf800) == 0xe000) // unconditional branch
-        goto unimplemented;
+        num_clocks = unconditional_branch(cpu);
     else if ((inst & 0xf000) == 0xd000) // conditional branch
         num_clocks = conditional_branch(cpu);
     else if ((inst & 0xf000) == 0xc000) // multiple load/store
