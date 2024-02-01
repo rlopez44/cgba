@@ -19,6 +19,8 @@ int decode_and_execute_arm(arm7tdmi *cpu);
 
 int decode_and_execute_thumb(arm7tdmi *cpu);
 
+bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate);
+
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr);
 
 uint32_t read_register(arm7tdmi *cpu, int regno);

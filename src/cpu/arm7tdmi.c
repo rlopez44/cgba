@@ -109,6 +109,140 @@ bool check_cond(arm7tdmi *cpu)
     return result;
 }
 
+// perform barrel shifter operation and return the shifter's carry out
+bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate)
+{
+    bool shifter_carry = false;
+    uint8_t shift_amt;
+    uint32_t op2;
+    if (immediate) // shift immediate value
+    {
+        op2 = inst & 0xff;
+        shift_amt = 2 * ((inst >> 8) & 0xf); // shift by twice rotate field
+        if (shift_amt)
+        {
+            op2 = (op2 >> shift_amt) | (op2 << (32 - shift_amt));
+            // we've already rotated, so bit 31 holds the carry out
+            shifter_carry = (op2 >> 31) & 1;
+        }
+        else // zero shift -> carry flag unaffected
+        {
+            shifter_carry = cpu->cpsr & COND_C_BITMASK;
+        }
+    }
+    else // shift register
+    {
+        bool shift_by_r = inst & (1 << 4); // shift by amount specified in a register
+
+        // shifting by register -> bottom byte of Rs specifies shift amount
+        shift_amt = shift_by_r
+                    ? read_register(cpu, (inst >> 8) & 0xf) & 0xff
+                    : (inst >> 7) & 0x1f;
+
+        // fetching Rs uses up first cycle, so prefetching
+        // occurs and Rd/Rm are read on the second cycle
+        if (shift_by_r)
+            prefetch(cpu);
+
+        // calculate shift
+        op2 = read_register(cpu, inst & 0xf); // Rm
+
+        if (shift_by_r && !shift_amt) // Rs=0x0 -> no shift, C flag unaffected
+        {
+            shifter_carry = cpu->cpsr & COND_C_BITMASK;
+        }
+        else switch ((inst >> 5) & 0x3)
+        {
+            case 0x0: // logical left
+                if (shift_amt > 31) // possible if shifting by register
+                {
+                    shifter_carry = (shift_amt == 32) ? op2 & 1 : 0;
+                    op2 = 0;
+                }
+                else if (shift_amt)
+                {
+                    shifter_carry = (op2 >> (32 - shift_amt)) & 1;
+                    op2 <<= shift_amt;
+                }
+                else // LSL #0, Rm used directly w/no shift
+                {
+                    shifter_carry = cpu->cpsr & COND_C_BITMASK;
+                }
+                break;
+
+            case 0x1: // logical right
+                if (shift_amt > 32)
+                {
+                    shifter_carry = false;
+                    op2 = 0;
+                }
+                else if (!shift_amt || shift_amt == 32)
+                {
+                    // shift amount of 0 encodes LSR #32
+                    shifter_carry = (op2 >> 31) & 1;
+                    op2 = 0;
+                }
+                else
+                {
+                    shifter_carry = (op2 >> (shift_amt - 1)) & 1;
+                    op2 >>= shift_amt;
+                }
+                break;
+
+            case 0x2: // arithmetic right
+                if (!shift_amt || shift_amt > 31)
+                {
+                    // shift amount of 0 encodes ASR #32
+                    if (op2 & (1 << 31))
+                    {
+                        shifter_carry = true;
+                        op2 = 0xffffffff;
+                    }
+                    else
+                    {
+                        shifter_carry = false;
+                        op2 = 0;
+                    }
+                }
+                else
+                {
+                    bool negative = op2 & (1 << 31);
+                    shifter_carry = (op2 >> (shift_amt - 1)) & 1;
+                    op2 >>= shift_amt;
+
+                    if (negative) // replace sifted-in zeroes with ones
+                        op2 |= ~((1 << (31 - shift_amt)) - 1);
+                }
+                break;
+
+            case 0x3: // rotate right
+                if (!shift_amt) // ROR #0 encodes RRX
+                {
+                    shifter_carry = op2 & 1;
+                    op2 = (op2 >> 1) | (((cpu->cpsr >> COND_C_SHIFT) & 1) << 31);
+                }
+                else
+                {
+                    // ROR by n >= 32 gives same result as ROR by n-32
+                    shift_amt &= 0x1f;
+
+                    // ROR by 0 (mod 32) -> Rm unaffected
+                    if (shift_amt)
+                        op2 = (op2 >> shift_amt) | (op2 << (32 - shift_amt));
+
+                    // Two cases: either ROR by 0 (mod 32) or ROR by
+                    // nonzero amount (mod 32) and we've already rotated.
+                    // In both cases, bit 31 contains the carry out bit.
+                    shifter_carry = (op2 >> 31) & 1;
+                }
+                break;
+        }
+    }
+
+    *result = op2;
+    return shifter_carry;
+}
+
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr)
 {
     if (addr & 1) // THUMB state
