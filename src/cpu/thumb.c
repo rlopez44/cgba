@@ -221,6 +221,43 @@ static int pc_relative_load(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int add_subtract(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool immediate = inst & (1 << 10);
+    bool sub = inst & (1 << 9);
+    int offset_arg = (inst >> 6) & 0x7;
+    int rs = (inst >> 3) & 0x7;
+    int rd = inst & 0x7;
+
+    uint32_t offset;
+    if (immediate)
+        offset = offset_arg;
+    else
+        offset = read_register(cpu, offset_arg);
+
+    uint32_t source = read_register(cpu, rs);
+    uint32_t result;
+    if (sub)
+        result = source - offset;
+    else
+        result = source + offset;
+
+    prefetch(cpu);
+    write_register(cpu, rd, result);
+
+    bool carry = offset > UINT32_MAX - source;
+    bool overflow = ((~(source ^ offset) & (source ^ result)) >> 31) & 1;
+
+    cpu->cpsr = (cpu->cpsr & ~COND_FLAGS_MASK)
+                | (result & COND_N_BITMASK)
+                | (!result << COND_Z_SHIFT)
+                | (carry << COND_C_SHIFT)
+                | (overflow << COND_V_SHIFT);
+
+    return 1; // 1S
+}
+
 static int move_shifted_register(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -290,7 +327,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xe000) == 0x2000) // move/compare/add/subtract immediate
         num_clocks = operate_with_immediate(cpu);
     else if ((inst & 0xf800) == 0x1800) // add/subtract
-        goto unimplemented;
+        num_clocks = add_subtract(cpu);
     else if ((inst & 0xe000) == 0x0000) // move shifted register
         num_clocks = move_shifted_register(cpu);
     else
