@@ -221,6 +221,153 @@ static int pc_relative_load(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int alu_operation(arm7tdmi *cpu)
+{
+    uint32_t inst = cpu->pipeline[0];
+    int opcode = (inst >> 6) & 0xf;
+    int rs = (inst >> 3) & 0x7;
+    int rd = inst & 0x7;
+
+    uint32_t op1 = read_register(cpu, rd);
+    uint32_t op2 = read_register(cpu, rs);
+
+    bool carry_flag = cpu->cpsr & COND_C_BITMASK;
+
+    uint32_t result;
+    // only used by arithmetic operations
+    bool op_carry = false;
+    bool op_overflow = false;
+
+    switch (opcode)
+    {
+        case 0x0: // AND
+        case 0x8: // TST
+            result = op1 & op2;
+            break;
+
+        case 0x1: // EOR
+            result = op1 ^ op2;
+            break;
+
+        case 0x2: // LSL
+        case 0x3: // LSR
+        case 0x4: // ASR
+        case 0x7: // ROR
+        {
+            // 0 -> LSL, 1 -> LSR, 2 -> ASR, 3 -> ROR
+            int shift_opcode = opcode == 0x7 ? 0x3 : opcode - 2;
+            barrel_shift_args args = {
+                .immediate = false,
+                .shift_amt = op2 & 0xff,
+                .shift_by_reg = true,
+                .shift_input = op1 & 0xff,
+                .shift_opcode = shift_opcode,
+            };
+
+            op_carry = barrel_shift(cpu, &args, &result);
+            break;
+        }
+
+        case 0x5: // ADC
+            result = op1 + op2 + carry_flag;
+            // if op1 + op2 doesn't overflow, then check if
+            // adding the carry flag causes an overflow
+            op_carry = op2 > UINT32_MAX - op1
+                       || op1 + op2 > UINT32_MAX - carry_flag;
+            op_overflow = ((~(op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x6: // SBC
+            result = op1 - op2 + carry_flag - 1;
+            // if op1 - op2 doesn't borrow, then check if
+            // subtracting 1 - carry_flag also doesn't borrow
+            op_carry = op1 >= op2 && op1 - op2 >= 1u - carry_flag;
+            op_overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0x9: // NEG
+            result = -op2;
+            op_carry = !op2;
+            op_overflow = ((op2 & (op2 ^ result)) >> 31) & 1;
+            break;
+
+        case 0xa: // CMP
+            result = op1 - op2;
+            op_carry = op1 >= op2; // set if no borrow
+            // overflow into bit 31
+            op_overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0xb: // CMN
+            result = op1 + op2;
+            op_carry = op2 > UINT32_MAX - op1;
+            op_overflow = ((~(op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
+            break;
+
+        case 0xc: // ORR
+            result = op1 | op2;
+            break;
+
+        case 0xd: // MUL
+            result = op1 * op2;
+            break;
+
+        case 0xe: // BIC
+            result = op1 & ~op2;
+            break;
+
+        case 0xf: // MVN
+            result = ~op2;
+            break;
+    }
+
+    prefetch(cpu);
+
+    bool write_result = !(opcode == 0x8
+                          || opcode == 0xa
+                          || opcode == 0xb);
+
+    bool logical_op = opcode <= 0x4
+                      || opcode == 0x7
+                      || opcode == 0x8
+                      || opcode >= 0xc;
+
+    bool used_barrel_shift = opcode == 0x2
+                             || opcode == 0x3
+                             || opcode == 0x4
+                             || opcode >= 0x7;
+
+    if (write_result)
+        write_register(cpu, rd, result);
+
+    // all operations affect N and Z flags at a minimum
+    uint32_t altered_flags = (result & COND_N_BITMASK)
+                             | (!result << COND_Z_SHIFT);
+    uint32_t mask = ~(COND_N_BITMASK | COND_Z_BITMASK);
+
+    if (used_barrel_shift)
+    {
+        mask &= ~COND_C_BITMASK;
+        altered_flags |= op_carry << COND_C_SHIFT;
+    }
+
+    if (!logical_op)
+    {
+        mask &= ~COND_V_BITMASK;
+        altered_flags |= op_overflow << COND_V_SHIFT;
+    }
+
+    cpu->cpsr = (cpu->cpsr & mask) | altered_flags;
+
+    int num_clocks = 1; // 1S
+    if (opcode == 0xd) // +mI (MUL)
+        num_clocks += get_multiply_array_cycles(op1, false, false);
+    else if (used_barrel_shift) // +1I
+        num_clocks += 1;
+
+    return num_clocks;
+}
+
 static int add_subtract(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -323,7 +470,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xfc00) == 0x4400) // hi register operations/branch exchange
         num_clocks = hi_register_op_or_bx(cpu);
     else if ((inst & 0xfc00) == 0x4000) // ALU operations
-        goto unimplemented;
+        num_clocks = alu_operation(cpu);
     else if ((inst & 0xe000) == 0x2000) // move/compare/add/subtract immediate
         num_clocks = operate_with_immediate(cpu);
     else if ((inst & 0xf800) == 0x1800) // add/subtract

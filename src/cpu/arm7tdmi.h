@@ -29,6 +29,8 @@ int decode_and_execute_arm(arm7tdmi *cpu);
 
 int decode_and_execute_thumb(arm7tdmi *cpu);
 
+int get_multiply_array_cycles(uint32_t rs, bool mul_long, bool signed_);
+
 bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result);
 
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr);

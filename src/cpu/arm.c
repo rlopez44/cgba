@@ -658,47 +658,6 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
     return 1;
 }
 
-/*
- * Calculate how many 8-bit multiplier array cycles
- * the MUL/MLA/MULL/MLAL instruction required.
- *
- * MUL/MLA/SMULL/SMLAL
- * --------------------
- * 1 if Rs[31:8] are all zero or all one
- * 2 if Rs[31:16] are all zero or all one
- * 3 if Rs[31:24] are all zero or all one
- * 4 otherwise
- *
- * UMULL/UMLAL
- * -----------
- * 1 if Rs[31:8] are all zero
- * 2 if Rs[31:16] are all zero
- * 3 if Rs[31:24] are all zero
- * 4 otherwise
- */
-static int get_multiply_array_cycles(uint32_t rs, bool mul_long, bool signed_)
-{
-    int num_clocks = 4;
-    uint32_t work_val = rs;
-    uint32_t ref_val = 0xffffffff;
-    bool match_all_ones = !mul_long || signed_;
-    for (int i = 1; i < 4; ++i)
-    {
-        work_val >>= 8;
-        ref_val >>= 8;
-        bool all_zeros = !work_val;
-        bool all_ones  = work_val == ref_val;
-
-        if (all_zeros || (match_all_ones && all_ones))
-        {
-            num_clocks = i;
-            break;
-        }
-    }
-
-    return num_clocks;
-}
-
 static int multiply(arm7tdmi *cpu, uint32_t inst)
 {
     bool mul_long   = (inst >> 23) & 1;
