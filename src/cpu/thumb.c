@@ -221,6 +221,33 @@ static int pc_relative_load(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int move_shifted_register(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    uint32_t rdval;
+
+    barrel_shift_args args = {
+        .immediate = false,
+        .shift_by_reg = false,
+        .shift_amt = (inst >> 6) & 0x1f,
+        .shift_opcode = (inst >> 11) & 0x3,
+        .shift_input = read_register(cpu, (inst >> 3) & 0x7),
+    };
+
+    bool shifter_carry = barrel_shift(cpu, &args, &rdval);
+
+    prefetch(cpu);
+    write_register(cpu, inst & 0x7, rdval);
+
+    const uint32_t mask = ~(COND_N_BITMASK | COND_Z_BITMASK | COND_C_BITMASK);
+    cpu->cpsr = (cpu->cpsr & mask)
+                | (rdval & COND_N_BITMASK)
+                | (!rdval << COND_Z_SHIFT)
+                | (shifter_carry << COND_C_SHIFT);
+
+    return 1; // 1S
+}
+
 int decode_and_execute_thumb(arm7tdmi *cpu)
 {
     int num_clocks = 0;
@@ -265,7 +292,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf800) == 0x1800) // add/subtract
         goto unimplemented;
     else if ((inst & 0xe000) == 0x0000) // move shifted register
-        goto unimplemented;
+        num_clocks = move_shifted_register(cpu);
     else
         panic_illegal_instruction(cpu);
 
