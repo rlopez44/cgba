@@ -109,16 +109,14 @@ bool check_cond(arm7tdmi *cpu)
     return result;
 }
 
-// perform barrel shifter operation and return the shifter's carry out
-bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate)
+// Perform barrel shifter operation and return the shifter's carry out
+bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result)
 {
     bool shifter_carry = false;
-    uint8_t shift_amt;
-    uint32_t op2;
-    if (immediate) // shift immediate value
+    int shift_amt = args->shift_amt;
+    uint32_t op2 = args->shift_input;
+    if (args->immediate) // shift immediate value (ARM mode only)
     {
-        op2 = inst & 0xff;
-        shift_amt = 2 * ((inst >> 8) & 0xf); // shift by twice rotate field
         if (shift_amt)
         {
             op2 = (op2 >> shift_amt) | (op2 << (32 - shift_amt));
@@ -132,26 +130,12 @@ bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate
     }
     else // shift register
     {
-        bool shift_by_r = inst & (1 << 4); // shift by amount specified in a register
-
-        // shifting by register -> bottom byte of Rs specifies shift amount
-        shift_amt = shift_by_r
-                    ? read_register(cpu, (inst >> 8) & 0xf) & 0xff
-                    : (inst >> 7) & 0x1f;
-
-        // fetching Rs uses up first cycle, so prefetching
-        // occurs and Rd/Rm are read on the second cycle
-        if (shift_by_r)
-            prefetch(cpu);
-
         // calculate shift
-        op2 = read_register(cpu, inst & 0xf); // Rm
-
-        if (shift_by_r && !shift_amt) // Rs=0x0 -> no shift, C flag unaffected
+        if (args->shift_by_reg && !shift_amt) // Rs=0x0 -> no shift, C flag unaffected
         {
             shifter_carry = cpu->cpsr & COND_C_BITMASK;
         }
-        else switch ((inst >> 5) & 0x3)
+        else switch (args->shift_opcode)
         {
             case 0x0: // logical left
                 if (shift_amt > 31) // possible if shifting by register

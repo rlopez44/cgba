@@ -5,6 +5,16 @@
 #include <stdint.h>
 #include "cgba/cpu.h"
 
+typedef struct barrel_shift_args {
+    uint32_t shift_input;
+    int shift_amt;
+    bool immediate;
+
+    // only used when shifting a register
+    bool shift_by_reg;
+    int shift_opcode;
+} barrel_shift_args;
+
 #define T_BITMASK (1 << 5)
 
 void reload_pipeline(arm7tdmi *cpu);
@@ -19,7 +29,7 @@ int decode_and_execute_arm(arm7tdmi *cpu);
 
 int decode_and_execute_thumb(arm7tdmi *cpu);
 
-bool barrel_shift(arm7tdmi *cpu, uint32_t inst, uint32_t *result, bool immediate);
+bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result);
 
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr);
 

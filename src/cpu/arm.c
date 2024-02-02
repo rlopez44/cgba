@@ -90,12 +90,40 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
     bool write_result = opcode <= 0x7 || opcode >= 0xc;
     bool carry_flag = cpu->cpsr & COND_C_BITMASK;
 
-    uint32_t result, op2;
-    bool shifter_carry = barrel_shift(cpu, inst, &op2, immediate);
+    barrel_shift_args shift_args = {
+        .immediate = immediate,
+        .shift_by_reg = shift_by_r,
+    };
+
+    if (immediate)
+    {
+        // shift by twice rotate field
+        shift_args.shift_amt = 2 * ((inst >> 8) & 0xf);
+        shift_args.shift_input = inst & 0xff;
+    }
+    else
+    {
+        // shifting by register -> bottom byte of Rs specifies shift amount
+        shift_args.shift_amt = shift_by_r
+                               ? read_register(cpu, (inst >> 8) & 0xf) & 0xff
+                               : (inst >> 7) & 0x1f;
+
+        // fetching Rs uses up first cycle, so prefetching
+        // occurs and Rd/Rm are read on the second cycle
+        if (shift_by_r)
+            prefetch(cpu);
+
+        shift_args.shift_input = read_register(cpu, inst & 0xf); // Rm
+        shift_args.shift_opcode = (inst >> 5) & 0x3;
+    }
+
+    uint32_t op2;
+    bool shifter_carry = barrel_shift(cpu, &shift_args, &op2);
 
     // operand1 is read after shifting is performed
     uint32_t op1 = read_register(cpu, rn);
 
+    uint32_t result;
     bool op_carry = false, op_overflow = false; // only used by arithmetic operations
     switch (opcode)
     {
@@ -382,9 +410,21 @@ static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)
 
     uint32_t offset;
     if (immediate)
+    {
         offset = inst & 0x0fff;
+    }
     else
-        barrel_shift(cpu, inst, &offset, false); // always register by immediate
+    {
+        // always shift register by immediate
+        barrel_shift_args shift_args = {
+            .immediate = false,
+            .shift_by_reg = false,
+            .shift_opcode = (inst >> 5) & 0x3,
+            .shift_amt = (inst >> 7) & 0x1f,
+            .shift_input = read_register(cpu, inst & 0xf),
+        };
+        barrel_shift(cpu, &shift_args, &offset);
+    }
 
     uint32_t transfer_addr = read_register(cpu, rn);
 
@@ -589,9 +629,18 @@ static int msr_transfer(arm7tdmi *cpu, uint32_t inst)
 
     uint32_t new_psr;
     if (immediate)
-        barrel_shift(cpu, inst, &new_psr, true);
+    {
+        barrel_shift_args shift_args = {
+            .immediate = true,
+            .shift_amt = 2 * ((inst >> 8) & 0xf), // shift by twice rotate field
+            .shift_input = inst & 0xff,
+        };
+        barrel_shift(cpu, &shift_args, &new_psr);
+    }
     else
+    {
         new_psr = read_register(cpu, inst & 0xf);
+    }
 
     uint32_t write_mask = 0;
     // control bits are protected in unprivileged user mode
