@@ -126,33 +126,43 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
     uint32_t op1 = read_register(cpu, rd);
     uint32_t op2 = read_register(cpu, rs);
 
+    uint32_t result;
     switch (op)
     {
         case 0x0: // ADD
-            write_register(cpu, rd, op1 + op2);
+            result = op1 + op2;
             break;
 
         case 0x1: // CMP
         {
-            uint32_t res = op1 - op2;
+            result = op1 - op2;
             bool carry = op1 >= op2; // set if no borrow
             // overflow into bit 31
-            bool overflow = (((op1 ^ op2) & (op1 ^ res)) >> 31) & 1;
+            bool overflow = (((op1 ^ op2) & (op1 ^ result)) >> 31) & 1;
             cpu->cpsr = (cpu->cpsr & ~COND_FLAGS_MASK)
-                        | (res & COND_N_BITMASK)
-                        | (!res << COND_Z_SHIFT)
+                        | (result & COND_N_BITMASK)
+                        | (!result << COND_Z_SHIFT)
                         | (carry << COND_C_SHIFT)
                         | (overflow << COND_V_SHIFT);
             break;
         }
 
         case 0x2: // MOV
-            write_register(cpu, rd, op2);
+            result = op2;
             break;
 
         case 0x3: // BX
             do_branch_and_exchange(cpu, read_register(cpu, rs));
             break;
+    }
+
+    if (write_result)
+    {
+        // R15 must be halfword-aligned
+        if (rd == R15)
+            result &= ~1u;
+
+        write_register(cpu, rd, result);
     }
 
     // branching has it's own pipeline reload logic
