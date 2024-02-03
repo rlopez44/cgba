@@ -297,7 +297,7 @@ static int alu_operation(arm7tdmi *cpu)
                 .immediate = false,
                 .shift_amt = op2 & 0xff,
                 .shift_by_reg = true,
-                .shift_input = op1 & 0xff,
+                .shift_input = op1,
                 .shift_opcode = shift_opcode,
             };
 
