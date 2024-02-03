@@ -74,6 +74,24 @@ static int long_branch_with_link(arm7tdmi *cpu)
     return offset_low ? 3 : 1;
 }
 
+static int add_offset_to_sp(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool negative = (inst >> 7) & 1;
+    uint32_t offset = (inst & 0x7f) << 2;
+
+    uint32_t sp = read_register(cpu, R13);
+    if (negative)
+        sp -= offset;
+    else
+        sp += offset;
+
+    write_register(cpu, R13, sp);
+    prefetch(cpu);
+
+    return 1; // 1S
+}
+
 static int operate_with_immediate(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -487,7 +505,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf000) == 0xf000) // long branch w/link
         num_clocks = long_branch_with_link(cpu);
     else if ((inst & 0xff00) == 0xb000) // add offset to SP
-        goto unimplemented;
+        num_clocks = add_offset_to_sp(cpu);
     else if ((inst & 0xf600) == 0xb400) // push/pop registers
         goto unimplemented;
     else if ((inst & 0xf000) == 0x8000) // load/store halfword
