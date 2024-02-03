@@ -47,6 +47,33 @@ static int conditional_branch(arm7tdmi *cpu)
     return do_branch(cpu, offset);
 }
 
+static int long_branch_with_link(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool offset_low = (inst >> 11) & 1;
+
+    uint32_t offset = inst & 0x7ff;
+    uint32_t tmp;
+    if (offset_low) // second instruction
+    {
+        offset <<= 1;
+        tmp = read_register(cpu, R14) + offset;
+        write_register(cpu, R14, (cpu->registers[R15] - 2) | 1);
+        cpu->registers[R15] = tmp;
+        reload_pipeline(cpu);
+    }
+    else // first instruction
+    {
+        offset <<= 12;
+        tmp = cpu->registers[R15] + offset;
+        write_register(cpu, R14, tmp);
+        prefetch(cpu);
+    }
+
+    // first instruction: 1S, second instruction: 2S + 1N
+    return offset_low ? 3 : 1;
+}
+
 static int operate_with_immediate(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -458,7 +485,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf000) == 0xc000) // multiple load/store
         goto unimplemented;
     else if ((inst & 0xf000) == 0xf000) // long branch w/link
-        goto unimplemented;
+        num_clocks = long_branch_with_link(cpu);
     else if ((inst & 0xff00) == 0xb000) // add offset to SP
         goto unimplemented;
     else if ((inst & 0xf600) == 0xb400) // push/pop registers
