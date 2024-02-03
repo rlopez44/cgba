@@ -64,6 +64,8 @@ static int long_branch_with_link(arm7tdmi *cpu)
     }
     else // first instruction
     {
+        if (offset & (1 << 10))
+            offset |= ~0x7ffu;
         offset <<= 12;
         tmp = cpu->registers[R15] + offset;
         write_register(cpu, R14, tmp);
