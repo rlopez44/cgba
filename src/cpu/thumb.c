@@ -251,6 +251,57 @@ static int load_address(arm7tdmi *cpu)
     return 1; // 1S
 }
 
+static int load_store_register_offset(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool load = inst & (1 << 11);
+    bool byte_trans = inst & (1 << 10);
+    int ro = (inst >> 6) & 0x7;
+    int rb = (inst >> 3) & 0x7;
+    int rd = inst & 0x7;
+
+    uint32_t base = read_register(cpu, rb);
+    uint32_t offset = read_register(cpu, ro);
+    uint32_t transfer_addr = base + offset;
+
+    prefetch(cpu);
+
+    int num_clocks;
+    if (load)
+    {
+        if (byte_trans)
+        {
+            write_register(cpu, rd, read_byte(cpu->mem, transfer_addr));
+        }
+        else
+        {
+            // if address is not word-aligned, we need to rotate the
+            // word-aligned data so the addressed byte is in bits 0-7 of Rd
+            int boundary_offset = transfer_addr & 0x3;
+            int rot_amt = 8 * boundary_offset;
+            uint32_t word = read_word(cpu->mem, transfer_addr);
+            if (rot_amt)
+                word = word >> rot_amt | word << (32 - rot_amt);
+            write_register(cpu, rd, word);
+        }
+
+        // 1S + 1N + 1I
+        num_clocks = 3;
+    }
+    else
+    {
+        uint32_t data = read_register(cpu, rd);
+        if (byte_trans)
+            write_byte(cpu->mem, transfer_addr, data);
+        else
+            write_word(cpu->mem, transfer_addr, data);
+
+        num_clocks = 2; // 2N cycles
+    }
+
+    return num_clocks;
+}
+
 static int pc_relative_load(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -519,7 +570,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xe000) == 0x6000) // load/store w/immediate offset
         goto unimplemented;
     else if ((inst & 0xf200) == 0x5000) // load/store w/register offset
-        goto unimplemented;
+        num_clocks = load_store_register_offset(cpu);
     else if ((inst & 0xf200) == 0x5200) // load/store sign-extended byte/halfword
         goto unimplemented;
     else if ((inst & 0xf800) == 0x4800) // PC relative load
