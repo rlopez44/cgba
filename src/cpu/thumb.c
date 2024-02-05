@@ -302,6 +302,70 @@ static int load_store_register_offset(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int load_store_sign_extended(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    int opcode = (inst >> 10) & 0x3;
+    int ro = (inst >> 6) & 0x7;
+    int rb = (inst >> 3) & 0x7;
+    int rd = inst & 0x7;
+
+    uint32_t base = read_register(cpu, rb);
+    uint32_t offset = read_register(cpu, ro);
+    uint32_t transfer_addr = base + offset;
+    bool unaligned = transfer_addr & 1;
+
+    prefetch(cpu);
+
+    uint32_t data;
+    switch (opcode)
+    {
+        case 0x0: // STRH
+            write_halfword(cpu->mem, transfer_addr, read_register(cpu, rd));
+            break;
+
+        case 0x1: // LDSB
+            data = read_byte(cpu->mem, transfer_addr);
+            if (data & 0x80)
+                data |= 0xffffff00;
+            write_register(cpu, rd, data);
+            break;
+
+        case 0x2: // LDRH
+            data = read_halfword(cpu->mem, transfer_addr);
+
+            // If the address is not halfword-aligned, the
+            // aligned data is rotated so the addressed
+            // byte is in bits 0-7 of Rd
+            if (unaligned)
+                data = data >> 8 | data << 24;
+            write_register(cpu, rd, data);
+            break;
+
+        case 0x3: // LDSH
+            data = read_halfword(cpu->mem, transfer_addr);
+
+            // If the address is not halfword-aligned,
+            // the addressed byte is sign-extended
+            if (unaligned)
+            {
+                data = (data >> 8) & 0xff;
+                if (data & 0x80)
+                    data |= 0xffffff00;
+            }
+            else
+            {
+                if (data & 0x8000)
+                    data |= 0xffff0000;
+            }
+            write_register(cpu, rd, data);
+            break;
+    }
+
+    // LDR: 1S + 1N + 1I, STR: 2N
+    return opcode ? 3 : 2;
+}
+
 static int pc_relative_load(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -572,7 +636,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf200) == 0x5000) // load/store w/register offset
         num_clocks = load_store_register_offset(cpu);
     else if ((inst & 0xf200) == 0x5200) // load/store sign-extended byte/halfword
-        goto unimplemented;
+        num_clocks = load_store_sign_extended(cpu);
     else if ((inst & 0xf800) == 0x4800) // PC relative load
         num_clocks = pc_relative_load(cpu);
     else if ((inst & 0xfc00) == 0x4400) // hi register operations/branch exchange
