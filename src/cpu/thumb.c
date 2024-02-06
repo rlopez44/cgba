@@ -231,6 +231,36 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int load_store_halfword(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool load = inst & (1 << 11);
+    uint32_t offset = ((inst >> 6) & 0x1f) << 1;
+    int rb = (inst >> 3) & 0x7;
+    int rd = inst & 0x7;
+
+    uint32_t transfer_addr = read_register(cpu, rb) + offset;
+
+    prefetch(cpu);
+
+    uint32_t data;
+    if (load)
+    {
+        data = read_halfword(cpu->mem, transfer_addr);
+        if (transfer_addr & 1)
+            data = data >> 8 | data << 24;
+        write_register(cpu, rd, data);
+    }
+    else
+    {
+        data = read_register(cpu, rd);
+        write_halfword(cpu->mem, transfer_addr, data);
+    }
+
+    // LDR: 1S + 1N + 1I, STR: 2N
+    return load ? 3 : 2;
+}
+
 static int load_address(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -644,7 +674,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf600) == 0xb400) // push/pop registers
         goto unimplemented;
     else if ((inst & 0xf000) == 0x8000) // load/store halfword
-        goto unimplemented;
+        num_clocks = load_store_halfword(cpu);
     else if ((inst & 0xf000) == 0x9000) // SP relative load/store
         goto unimplemented;
     else if ((inst & 0xf000) == 0xa000) // load address
