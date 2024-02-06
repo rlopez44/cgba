@@ -251,17 +251,35 @@ static int load_address(arm7tdmi *cpu)
     return 1; // 1S
 }
 
-static int load_store_register_offset(arm7tdmi *cpu)
+static int load_store_with_offset(arm7tdmi *cpu, bool immediate)
 {
     uint16_t inst = cpu->pipeline[0];
     bool load = inst & (1 << 11);
-    bool byte_trans = inst & (1 << 10);
-    int ro = (inst >> 6) & 0x7;
+
+    bool byte_trans;
+    if (immediate)
+        byte_trans = inst & (1 << 12);
+    else
+        byte_trans = inst & (1 << 10);
+
     int rb = (inst >> 3) & 0x7;
     int rd = inst & 0x7;
 
     uint32_t base = read_register(cpu, rb);
-    uint32_t offset = read_register(cpu, ro);
+
+    uint32_t offset;
+    if (immediate)
+    {
+        offset = (inst >> 6) & 0x1f;
+        if (!byte_trans)
+            offset <<= 2;
+    }
+    else
+    {
+        int ro = (inst >> 6) & 0x7;
+        offset = read_register(cpu, ro);
+    }
+
     uint32_t transfer_addr = base + offset;
 
     prefetch(cpu);
@@ -632,9 +650,9 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf000) == 0xa000) // load address
         num_clocks = load_address(cpu);
     else if ((inst & 0xe000) == 0x6000) // load/store w/immediate offset
-        goto unimplemented;
+        num_clocks = load_store_with_offset(cpu, true);
     else if ((inst & 0xf200) == 0x5000) // load/store w/register offset
-        num_clocks = load_store_register_offset(cpu);
+        num_clocks = load_store_with_offset(cpu, false);
     else if ((inst & 0xf200) == 0x5200) // load/store sign-extended byte/halfword
         num_clocks = load_store_sign_extended(cpu);
     else if ((inst & 0xf800) == 0x4800) // PC relative load
