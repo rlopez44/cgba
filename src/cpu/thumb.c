@@ -261,6 +261,36 @@ static int load_store_halfword(arm7tdmi *cpu)
     return load ? 3 : 2;
 }
 
+static int sp_relative_load_store(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool load = inst & (1 << 11);
+    int rd = (inst >> 8) & 0x7;
+    uint32_t offset = (inst & 0xff) << 2;
+    uint32_t transfer_addr = read_register(cpu, R13) + offset;
+
+    prefetch(cpu);
+
+    uint32_t data;
+    if (load)
+    {
+        data = read_word(cpu->mem, transfer_addr);
+        // unaligned load -> rotated data
+        int rot_amt = 8 * (transfer_addr & 0x3);
+        if (rot_amt)
+            data = data >> rot_amt | data << (32 - rot_amt);
+        write_register(cpu, rd, data);
+    }
+    else
+    {
+        data = read_register(cpu, rd);
+        write_word(cpu->mem, transfer_addr, data);
+    }
+
+    // LDR: 1S + 1N + 1I, STR: 2N
+    return load ? 3 : 2;
+}
+
 static int load_address(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -675,8 +705,8 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
         goto unimplemented;
     else if ((inst & 0xf000) == 0x8000) // load/store halfword
         num_clocks = load_store_halfword(cpu);
-    else if ((inst & 0xf000) == 0x9000) // SP relative load/store
-        goto unimplemented;
+    else if ((inst & 0xf000) == 0x9000) // SP-relative load/store
+        num_clocks = sp_relative_load_store(cpu);
     else if ((inst & 0xf000) == 0xa000) // load address
         num_clocks = load_address(cpu);
     else if ((inst & 0xe000) == 0x6000) // load/store w/immediate offset
