@@ -7,6 +7,17 @@
 #include "cgba/memory.h"
 #include "arm7tdmi.h"
 
+// For use by the LDM/STM instructions
+int count_set_bits(uint32_t n)
+{
+    // Source: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
+    int nset;
+    for (nset = 0; n; ++nset)
+        n &= n - 1; // clear the least significant bit set
+
+    return nset;
+}
+
 /* Reload the instruction pipeline after a pipeline flush */
 void reload_pipeline(arm7tdmi *cpu)
 {

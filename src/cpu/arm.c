@@ -7,16 +7,6 @@
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
-static int count_set_bits(uint32_t n)
-{
-    // Source: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
-    int nset;
-    for (nset = 0; n; ++nset)
-        n &= n - 1; // clear the least significant bit set
-
-    return nset;
-}
-
 static void restore_cpsr(arm7tdmi *cpu)
 {
     arm_bankmode mode = get_current_bankmode(cpu);

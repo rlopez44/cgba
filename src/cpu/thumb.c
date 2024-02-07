@@ -231,6 +231,98 @@ static int hi_register_op_or_bx(arm7tdmi *cpu)
     return num_clocks;
 }
 
+static int push_pop_registers(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool link = inst & (1 << 8);
+    bool load = inst & (1 << 11);
+    int register_list = inst & 0xff;
+
+    uint32_t base = read_register(cpu, R13);
+
+    prefetch(cpu);
+
+    bool pc_trans;
+    int num_transfers;
+    if (register_list || link)
+    {
+        uint32_t curr_addr = base;
+        pc_trans = link && load;
+        num_transfers = count_set_bits(register_list) + link;
+
+        // always transfer starting at lowest address
+        if (!load)
+            curr_addr -= 4*num_transfers;
+
+        for (int i = 0; i <= R7; ++i)
+        {
+            // bit i not set -> no transfer for register Ri
+            if (!(inst & (1 << i)))
+                continue;
+
+            uint32_t transfer_data;
+            if (load)
+            {
+                transfer_data = read_word(cpu->mem, curr_addr);
+                write_register(cpu, i, transfer_data);
+            }
+            else
+            {
+                transfer_data = read_register(cpu, i);
+                write_word(cpu->mem, curr_addr, transfer_data);
+            }
+
+            curr_addr += 4;
+        }
+
+        if (link && load) // POP PC
+        {
+            cpu->registers[R15] = read_word(cpu->mem, curr_addr) & ~1u;
+            reload_pipeline(cpu);
+        }
+        else if (link) // PUSH LR
+        {
+            write_word(cpu->mem, curr_addr, read_register(cpu, R14));
+        }
+
+        uint32_t modified_base = base;
+        if (load)
+            modified_base += 4*num_transfers;
+        else
+            modified_base -= 4*num_transfers;
+        write_register(cpu, R13, modified_base);
+    }
+    else
+    {
+        // edge case: empty register list transfers R15 and writes
+        // back to SP with offset +/-0x40 for increment/decrement
+        pc_trans = true;
+        num_transfers = 1;
+
+        if (load)
+        {
+            cpu->registers[R15] = read_word(cpu->mem, base) & ~1u;
+            write_register(cpu, R13, base + 0x40);
+            reload_pipeline(cpu);
+        }
+        else
+        {
+            write_word(cpu->mem, base - 0x40, cpu->registers[R15]);
+            write_register(cpu, R13, base - 0x40);
+        }
+    }
+
+    int num_clocks;
+    if (pc_trans)
+        num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
+    else if (load)
+        num_clocks = num_transfers + 1 + 1;       // nS + 1N + 1I
+    else
+        num_clocks = (num_transfers - 1) + 2;     // (n - 1)S + 2N
+
+    return num_clocks;
+}
+
 static int load_store_halfword(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -702,7 +794,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xff00) == 0xb000) // add offset to SP
         num_clocks = add_offset_to_sp(cpu);
     else if ((inst & 0xf600) == 0xb400) // push/pop registers
-        goto unimplemented;
+        num_clocks = push_pop_registers(cpu);
     else if ((inst & 0xf000) == 0x8000) // load/store halfword
         num_clocks = load_store_halfword(cpu);
     else if ((inst & 0xf000) == 0x9000) // SP-relative load/store
