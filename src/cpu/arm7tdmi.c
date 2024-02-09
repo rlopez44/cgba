@@ -289,6 +289,7 @@ int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args)
     prefetch(cpu);
 
     uint32_t curr_addr = base;
+    uint32_t pc_align_mask = cpu->cpsr & T_BITMASK ? ~1u : ~0x3u;
 
     bool pc_trans;
     int num_transfers;
@@ -328,6 +329,9 @@ int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args)
             if (args->load)
             {
                 transfer_data = read_word(cpu->mem, curr_addr);
+                if (i == R15)
+                    transfer_data &= pc_align_mask;
+
                 if (user_bank_trans)
                     cpu->registers[i] = transfer_data;
                 else
@@ -392,7 +396,7 @@ int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args)
 
         if (args->load)
         {
-            cpu->registers[R15] = read_word(cpu->mem, curr_addr);
+            cpu->registers[R15] = read_word(cpu->mem, curr_addr) & pc_align_mask;
             reload_pipeline(cpu);
         }
         else
