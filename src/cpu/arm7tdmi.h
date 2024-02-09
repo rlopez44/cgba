@@ -27,8 +27,6 @@ typedef struct block_transfer_args {
 
 #define T_BITMASK (1 << 5)
 
-int count_set_bits(uint32_t n);
-
 void reload_pipeline(arm7tdmi *cpu);
 
 void prefetch(arm7tdmi *cpu);

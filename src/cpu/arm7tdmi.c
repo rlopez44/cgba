@@ -8,7 +8,7 @@
 #include "arm7tdmi.h"
 
 // For use by the LDM/STM instructions
-int count_set_bits(uint32_t n)
+static int count_set_bits(uint32_t n)
 {
     // Source: https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
     int nset;
