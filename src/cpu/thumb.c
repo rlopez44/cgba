@@ -47,6 +47,26 @@ static int conditional_branch(arm7tdmi *cpu)
     return do_branch(cpu, offset);
 }
 
+static int multiple_load_store(arm7tdmi *cpu)
+{
+    uint16_t inst = cpu->pipeline[0];
+    bool load = inst & (1 << 11);
+    int register_list = inst & 0xff;
+    int rn = (inst >> 8) & 0x7;
+
+    block_transfer_args transfer_args = {
+        .preindex          = false,
+        .add               = true,
+        .load              = load,
+        .psr_or_force_user = false,
+        .write_back        = true,
+        .register_list     = register_list,
+        .rn                = rn,
+    };
+
+    return do_block_transfer(cpu, &transfer_args);
+}
+
 static int long_branch_with_link(arm7tdmi *cpu)
 {
     uint16_t inst = cpu->pipeline[0];
@@ -725,7 +745,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     else if ((inst & 0xf000) == 0xd000) // conditional branch
         num_clocks = conditional_branch(cpu);
     else if ((inst & 0xf000) == 0xc000) // multiple load/store
-        goto unimplemented;
+        num_clocks = multiple_load_store(cpu);
     else if ((inst & 0xf000) == 0xf000) // long branch w/link
         num_clocks = long_branch_with_link(cpu);
     else if ((inst & 0xff00) == 0xb000) // add offset to SP
