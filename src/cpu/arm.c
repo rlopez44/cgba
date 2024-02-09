@@ -240,149 +240,17 @@ static int process_data(arm7tdmi *cpu, uint32_t inst)
 
 static int block_data_transfer(arm7tdmi *cpu, uint32_t inst)
 {
-    int num_clocks;
-    bool preindex   = inst & (1 << 24);
-    bool add        = inst & (1 << 23);
-    bool sbit       = inst & (1 << 22);
-    bool load       = inst & (1 << 20);
+    block_transfer_args transfer_args = {
+        .preindex          = inst & (1 << 24),
+        .add               = inst & (1 << 23),
+        .psr_or_force_user = inst & (1 << 22),
+        .write_back        = inst & (1 << 21),
+        .load              = inst & (1 << 20),
+        .register_list     = inst & 0xffff,
+        .rn                = (inst >> 16) & 0xf,
+    };
 
-    int register_list = inst & 0xffff;
-
-    bool effective_preincrement = (preindex && add) || (!preindex && !add);
-
-    int rn = (inst >> 16) & 0xf;
-    uint32_t base = read_register(cpu, rn);
-
-    prefetch(cpu);
-
-    uint32_t curr_addr = base;
-
-    bool pc_trans;
-    int num_transfers;
-
-    if (register_list)
-    {
-        pc_trans = inst & (1 << 15);
-
-        bool write_back = inst & (1 << 21);
-        bool mode_change = sbit && pc_trans && load;
-        bool user_bank_trans = sbit && !mode_change;
-
-        bool base_in_rlist = register_list & (1 << rn);
-
-        // we need to count the number of registers to be transferred because
-        // LDM/STM start at the lowest address of the block and fill upward
-        num_transfers = count_set_bits(register_list);
-
-        uint32_t modified_base = base;
-        if (add)
-            modified_base += 4*num_transfers;
-        else
-            modified_base -= 4*num_transfers;
-
-        if (!add)
-            curr_addr -= 4*num_transfers;
-
-        for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
-        {
-            // bit i not set -> no transfer for register Ri
-            // except for the empty register list edge case
-            if (!(inst & (1 << i)))
-                continue;
-
-            if (effective_preincrement)
-                curr_addr += 4;
-
-            uint32_t transfer_data;
-            if (load)
-            {
-                transfer_data = read_word(cpu->mem, curr_addr);
-                if (user_bank_trans)
-                    cpu->registers[i] = transfer_data;
-                else
-                    write_register(cpu, i, transfer_data);
-            }
-            else
-            {
-                // STM with base in register list:
-                // first register in list -> original base stored
-                // second or later in list -> modified base stored
-                int mask = (1 << rn) - 1;
-                bool first_in_rlist = !(register_list & mask);
-
-                if (i == rn && first_in_rlist)
-                    transfer_data = base;
-                else if (i == rn)
-                    transfer_data = modified_base;
-                else if (user_bank_trans)
-                    transfer_data = cpu->registers[i];
-                else
-                    transfer_data = read_register(cpu, i);
-
-                write_word(cpu->mem, curr_addr, transfer_data);
-            }
-
-            if (!effective_preincrement)
-                curr_addr += 4;
-        }
-
-        if (mode_change)
-        {
-            arm_bankmode mode = get_current_bankmode(cpu);
-            if (mode == BANK_NONE)
-            {
-                fprintf(stderr, "Error: attempted LDM mode change in user mode\n");
-                exit(1);
-            }
-
-            cpu->cpsr = cpu->spsr[mode];
-        }
-
-        if ((pc_trans || !num_transfers) && load)
-            reload_pipeline(cpu);
-
-        // LDM: write-back value is overwritten by transfer
-        // when the base is included in the register list
-        if (write_back && !(load && base_in_rlist))
-            write_register(cpu, rn, modified_base);
-    }
-    else
-    {
-        // edge case: empty register list transfers R15 and writes
-        // back to Rn with offset +/-0x40 for increment/decrement
-        pc_trans = true;
-        num_transfers = 1;
-
-        if (!add)
-            curr_addr -= 0x40;
-
-        if (effective_preincrement)
-            curr_addr += 4;
-
-        if (load)
-        {
-            cpu->registers[R15] = read_word(cpu->mem, curr_addr);
-            reload_pipeline(cpu);
-        }
-        else
-        {
-            write_word(cpu->mem, curr_addr, cpu->registers[R15]);
-        }
-
-        if (add)
-            write_register(cpu, rn, base + 0x40);
-        else
-            write_register(cpu, rn, base - 0x40);
-    }
-
-    if (load && pc_trans)
-        num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
-    else if (load)
-        num_clocks = num_transfers + 1 + 1;       // nS + 1N + 1I
-    else
-        num_clocks = (num_transfers - 1) + 2;     // (n - 1)S + 2N
-
-    return num_clocks;
+    return do_block_transfer(cpu, &transfer_args);
 }
 
 static int single_data_transfer(arm7tdmi *cpu, uint32_t inst)

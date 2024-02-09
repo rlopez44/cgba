@@ -15,6 +15,16 @@ typedef struct barrel_shift_args {
     int shift_opcode;
 } barrel_shift_args;
 
+typedef struct block_transfer_args {
+    bool preindex;
+    bool add;
+    bool load;
+    bool psr_or_force_user;
+    bool write_back;
+    int register_list;
+    int rn;
+} block_transfer_args;
+
 #define T_BITMASK (1 << 5)
 
 int count_set_bits(uint32_t n);
@@ -34,6 +44,8 @@ int decode_and_execute_thumb(arm7tdmi *cpu);
 int get_multiply_array_cycles(uint32_t rs, bool mul_long, bool signed_);
 
 bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result);
+
+int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args);
 
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr);
 

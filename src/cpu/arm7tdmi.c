@@ -279,6 +279,144 @@ bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result)
     return shifter_carry;
 }
 
+int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args)
+{
+    bool effective_preincrement = (args->preindex && args->add)
+                                  || (!args->preindex && !args->add);
+
+    uint32_t base = read_register(cpu, args->rn);
+
+    prefetch(cpu);
+
+    uint32_t curr_addr = base;
+
+    bool pc_trans;
+    int num_transfers;
+    if (args->register_list)
+    {
+        pc_trans = args->register_list & (1 << R15);
+
+        bool mode_change = args->psr_or_force_user && pc_trans && args->load;
+        bool user_bank_trans = args->psr_or_force_user && !mode_change;
+
+        bool base_in_rlist = args->register_list & (1 << args->rn);
+
+        // we need to count the number of registers to be transferred because
+        // LDM/STM start at the lowest address of the block and fill upward
+        num_transfers = count_set_bits(args->register_list);
+
+        uint32_t modified_base = base;
+        if (args->add)
+            modified_base += 4*num_transfers;
+        else
+            modified_base -= 4*num_transfers;
+
+        if (!args->add)
+            curr_addr -= 4*num_transfers;
+
+        for (int i = 0; i < ARM_NUM_REGISTERS; ++i)
+        {
+            // bit i not set -> no transfer for register Ri
+            // except for the empty register list edge case
+            if (!(args->register_list & (1 << i)))
+                continue;
+
+            if (effective_preincrement)
+                curr_addr += 4;
+
+            uint32_t transfer_data;
+            if (args->load)
+            {
+                transfer_data = read_word(cpu->mem, curr_addr);
+                if (user_bank_trans)
+                    cpu->registers[i] = transfer_data;
+                else
+                    write_register(cpu, i, transfer_data);
+            }
+            else
+            {
+                // STM with base in register list:
+                // first register in list -> original base stored
+                // second or later in list -> modified base stored
+                int mask = (1 << args->rn) - 1;
+                bool first_in_rlist = !(args->register_list & mask);
+
+                if (i == args->rn && first_in_rlist)
+                    transfer_data = base;
+                else if (i == args->rn)
+                    transfer_data = modified_base;
+                else if (user_bank_trans)
+                    transfer_data = cpu->registers[i];
+                else
+                    transfer_data = read_register(cpu, i);
+
+                write_word(cpu->mem, curr_addr, transfer_data);
+            }
+
+            if (!effective_preincrement)
+                curr_addr += 4;
+        }
+
+        if (mode_change)
+        {
+            arm_bankmode mode = get_current_bankmode(cpu);
+            if (mode == BANK_NONE)
+            {
+                fprintf(stderr, "Error: attempted LDM mode change in user mode\n");
+                exit(1);
+            }
+
+            cpu->cpsr = cpu->spsr[mode];
+        }
+
+        if ((pc_trans || !num_transfers) && args->load)
+            reload_pipeline(cpu);
+
+        // LDM: write-back value is overwritten by transfer
+        // when the base is included in the register list
+        if (args->write_back && !(args->load && base_in_rlist))
+            write_register(cpu, args->rn, modified_base);
+    }
+    else
+    {
+        // edge case: empty register list transfers R15 and writes
+        // back to Rn with offset +/-0x40 for increment/decrement
+        pc_trans = true;
+        num_transfers = 1;
+
+        if (!args->add)
+            curr_addr -= 0x40;
+
+        if (effective_preincrement)
+            curr_addr += 4;
+
+        if (args->load)
+        {
+            cpu->registers[R15] = read_word(cpu->mem, curr_addr);
+            reload_pipeline(cpu);
+        }
+        else
+        {
+            write_word(cpu->mem, curr_addr, cpu->registers[R15]);
+        }
+
+        if (args->add)
+            write_register(cpu, args->rn, base + 0x40);
+        else
+            write_register(cpu, args->rn, base - 0x40);
+    }
+
+    int num_clocks;
+    if (args->load && pc_trans)
+        num_clocks = (num_transfers + 1) + 2 + 1; // (n+1)S + 2N + 1I
+    else if (args->load)
+        num_clocks = num_transfers + 1 + 1;       // nS + 1N + 1I
+    else
+        num_clocks = (num_transfers - 1) + 2;     // (n - 1)S + 2N
+
+    return num_clocks;
+}
+
 void do_branch_and_exchange(arm7tdmi *cpu, uint32_t addr)
 {
     if (addr & 1) // THUMB state
