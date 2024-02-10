@@ -739,7 +739,7 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
     // decoding is going to involve a lot of magic numbers
     // See references in `README.md` for encoding documentation
     if ((inst & 0xff00) == 0xdf00)      // software interrupt
-        goto unimplemented;
+        num_clocks = software_interrupt(cpu);
     else if ((inst & 0xf800) == 0xe000) // unconditional branch
         num_clocks = unconditional_branch(cpu);
     else if ((inst & 0xf000) == 0xd000) // conditional branch
@@ -780,12 +780,4 @@ int decode_and_execute_thumb(arm7tdmi *cpu)
         panic_illegal_instruction(cpu);
 
     return num_clocks;
-
-// temporary until all instructions are implemented
-unimplemented:
-    fprintf(stderr,
-            "Error: Unimplemented THUMB instruction encountered: %04X at address %08X\n",
-            inst,
-            cpu->registers[R15] - 4);
-    exit(1);
 }

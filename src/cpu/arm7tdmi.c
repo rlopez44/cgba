@@ -2,10 +2,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "arm7tdmi.h"
+#include "cgba/bios.h"
 #include "cgba/cpu.h"
 #include "cgba/log.h"
 #include "cgba/memory.h"
-#include "arm7tdmi.h"
 
 // For use by the LDM/STM instructions
 static int count_set_bits(uint32_t n)
@@ -277,6 +278,33 @@ bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result)
 
     *result = op2;
     return shifter_carry;
+}
+
+/*
+ * Enter the software interrupt trap by doing the following:
+ * - save address to instruction following SWI into R14_svc
+ * - save the CPSR to SPSR_svc
+ * - disable interrupts
+ * - enter ARM state
+ * - enter supervisor mode
+ * - jump to SWI vector
+ */
+int software_interrupt(arm7tdmi *cpu)
+{
+    int num_clocks = 3; // 2S + 1N
+    int prefetch_offset = cpu->cpsr & T_BITMASK ? 2 : 4;
+
+    cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R15] - prefetch_offset;
+    cpu->spsr[BANK_SVC] = cpu->cpsr;
+    cpu->cpsr = (cpu->cpsr & ~CNTRL_BITS_MASK) | IRQ_DISABLE | FIQ_DISABLE | MODE_SVC;
+
+    cpu->registers[R15] = 0x08;
+    reload_pipeline(cpu);
+
+    // NOTE: since I don't support BIOS files yet I emulate syscalls in C
+    num_clocks += gba_syscall(cpu);
+
+    return num_clocks;
 }
 
 int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args)

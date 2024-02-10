@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "arm7tdmi.h"
-#include "cgba/bios.h"
 #include "cgba/cpu.h"
 #include "cgba/memory.h"
 
@@ -620,32 +619,6 @@ static int single_data_swap(arm7tdmi *cpu)
 
     // 1S + 2N + 1I
     return 4;
-}
-
-/*
- * Enter the software interrupt trap by doing the following:
- * - save address to instruction following SWI into R14_svc
- * - save the CPSR to SPSR_svc
- * - disable interrupts
- * - enter ARM state
- * - enter supervisor mode
- * - jump to SWI vector
- */
-static int software_interrupt(arm7tdmi *cpu)
-{
-    // 2S + 1N
-    int num_clocks = 3;
-    cpu->banked_registers[BANK_SVC][BANK_R14] = cpu->registers[R15] - 4;
-    cpu->spsr[BANK_SVC] = cpu->cpsr;
-    cpu->cpsr = (cpu->cpsr & ~CNTRL_BITS_MASK) | IRQ_DISABLE | FIQ_DISABLE | MODE_SVC;
-
-    cpu->registers[R15] = 0x08;
-    reload_pipeline(cpu);
-
-    // NOTE: since I don't support BIOS files yet I emulate syscalls in C
-    num_clocks += gba_syscall(cpu);
-
-    return num_clocks;
 }
 
 int decode_and_execute_arm(arm7tdmi *cpu)

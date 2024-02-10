@@ -12,8 +12,15 @@
  */
 int gba_syscall(arm7tdmi *cpu)
 {
-    uint32_t swi_addr = cpu->banked_registers[BANK_SVC][BANK_R14] - 4;
-    bios_syscall callno = (read_word(cpu->mem, swi_addr) >> 16) & 0xff;
+    bool thumb = cpu->spsr[BANK_SVC] & T_BITMASK;
+    int prefetch_offset = thumb ? 2 : 4;
+    uint32_t swi_addr = cpu->banked_registers[BANK_SVC][BANK_R14] - prefetch_offset;
+
+    bios_syscall callno;
+    if (thumb)
+        callno = read_halfword(cpu->mem, swi_addr) & 0xff;
+    else
+        callno = (read_word(cpu->mem, swi_addr) >> 16) & 0xff;
 
     switch (callno)
     {

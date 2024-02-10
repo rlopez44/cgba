@@ -41,6 +41,8 @@ int decode_and_execute_thumb(arm7tdmi *cpu);
 
 int get_multiply_array_cycles(uint32_t rs, bool mul_long, bool signed_);
 
+int software_interrupt(arm7tdmi *cpu);
+
 bool barrel_shift(arm7tdmi *cpu, barrel_shift_args *args, uint32_t *result);
 
 int do_block_transfer(arm7tdmi *cpu, block_transfer_args *args);
