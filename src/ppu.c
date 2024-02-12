@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,6 +116,7 @@ static void render_frame(gba_ppu *ppu)
     SDL_RenderClear(ppu->renderer);
     SDL_RenderCopy(ppu->renderer, ppu->screen, NULL, NULL);
     SDL_RenderPresent(ppu->renderer);
+    ppu->frame_presented_signal = true;
 
     return;
 

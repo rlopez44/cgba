@@ -71,9 +71,13 @@ void run_system(gba_system *gba)
         gba->clocks_emulated += num_clocks;
         run_ppu(gba->ppu, num_clocks);
 
-        while (SDL_PollEvent(&event))
-            if (event.type == SDL_QUIT)
-                gba->running = false;
+        if (gba->ppu->frame_presented_signal)
+        {
+            gba->ppu->frame_presented_signal = false;
+            while (SDL_PollEvent(&event))
+                if (event.type == SDL_QUIT)
+                    gba->running = false;
+        }
     }
 }
 

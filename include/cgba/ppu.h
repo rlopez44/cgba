@@ -20,6 +20,7 @@ typedef struct gba_ppu {
     uint16_t frame_buffer[FRAME_WIDTH*FRAME_HEIGHT]; // XBGR1555
     int scanline_clock;
     bool curr_frame_rendered;
+    bool frame_presented_signal; // for processing SDL events once per frame
 
     SDL_Window *window;
     SDL_Renderer *renderer;
