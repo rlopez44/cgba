@@ -3,18 +3,23 @@
 #include <stdio.h>
 #include <string.h>
 #include "cgba/cpu.h"
+#include "cgba/gamepad.h"
+#include "cgba/gba.h"
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
-#include "cgba/gba.h"
 #include "SDL_events.h"
 
 static void connect_compoments(gba_system *gba)
 {
-    // two-way connection between memory and the CPU/PPU
+    // two-way connection between memory and the CPU, PPU, and game pad
     gba->cpu->mem = gba->mem;
     gba->mem->cpu = gba->cpu;
+
     gba->mem->ppu = gba->ppu;
     gba->ppu->mem = gba->mem;
+
+    gba->gamepad->mem = gba->mem;
+    gba->mem->gamepad = gba->gamepad;
 }
 
 void init_system_or_die(gba_system *gba, const char *romfile)
@@ -43,6 +48,13 @@ void init_system_or_die(gba_system *gba, const char *romfile)
         exit(1);
     }
 
+    gba->gamepad = init_gamepad();
+    if (!gba->gamepad)
+    {
+        fputs("Failed to allocate gamepad\n", stderr);
+        exit(1);
+    }
+
     connect_compoments(gba);
 
     reset_cpu(gba->cpu);
@@ -58,13 +70,35 @@ void deinit_system(gba_system *gba)
     deinit_memory(gba->mem);
     deinit_cpu(gba->cpu);
     deinit_ppu(gba->ppu);
+    deinit_gamepad(gba->gamepad);
+}
+
+static void poll_input(gba_system *gba)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        switch (event.type)
+        {
+            case SDL_QUIT:
+                gba->running = false;
+                break;
+
+            case SDL_KEYDOWN:
+            case SDL_KEYUP:
+                on_keypress(gba->gamepad, &event.key);
+                break;
+
+            default:
+                break;
+        }
+    }
 }
 
 void run_system(gba_system *gba)
 {
     // emulate one second until we implement a basic PPU
     int num_clocks;
-    SDL_Event event;
     while (gba->running)
     {
         num_clocks = run_cpu(gba->cpu);
@@ -74,9 +108,7 @@ void run_system(gba_system *gba)
         if (gba->ppu->frame_presented_signal)
         {
             gba->ppu->frame_presented_signal = false;
-            while (SDL_PollEvent(&event))
-                if (event.type == SDL_QUIT)
-                    gba->running = false;
+            poll_input(gba);
         }
     }
 }

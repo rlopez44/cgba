@@ -8,6 +8,8 @@ enum io_registers {
     DISPCNT   = 0x04000000,
     DISPSTAT  = 0x04000004,
     VCOUNT    = 0x04000006,
+
+    KEYINPUT  = 0x04000130,
 };
 
 // Write a byte to the given address in the I/O register address range

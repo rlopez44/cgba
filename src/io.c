@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include "cgba/gamepad.h"
 #include "cgba/io.h"
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
@@ -30,6 +31,9 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
 
         case VCOUNT: // read-only
             break;
+
+        case KEYINPUT: // read-only
+            break;
     }
 }
 
@@ -56,6 +60,13 @@ uint8_t read_io_byte(gba_mem *mem, uint32_t addr)
 
         case VCOUNT:
             byte = msb ? 0 : mem->ppu->vcount;
+            break;
+
+        case KEYINPUT:
+            if (msb)
+                byte = mem->gamepad->state >> 8;
+            else
+                byte = mem->gamepad->state;
             break;
     }
 
