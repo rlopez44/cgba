@@ -571,9 +571,14 @@ static int multiply(arm7tdmi *cpu, uint32_t inst)
         int shift_amt = mul_long ? 63 : 31;
         cpu->cpsr = cpu->cpsr & ~(COND_N_BITMASK | COND_Z_BITMASK);
 
+        // Because we store in 64-bit var, we need to get
+        // rid of upper 32 bits when doing 32-bit mul.
+        if (!mul_long)
+            result &= UINT32_MAX;
+
         if (!result)
             cpu->cpsr |= COND_Z_BITMASK;
-        else if (result >> shift_amt)
+        else if ((result >> shift_amt) & 1)
             cpu->cpsr |= COND_N_BITMASK;
     }
 
