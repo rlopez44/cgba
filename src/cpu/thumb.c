@@ -634,7 +634,7 @@ static int alu_operation(arm7tdmi *cpu)
     bool used_barrel_shift = opcode == 0x2
                              || opcode == 0x3
                              || opcode == 0x4
-                             || opcode >= 0x7;
+                             || opcode == 0x7;
 
     if (write_result)
         write_register(cpu, rd, result);
@@ -644,7 +644,7 @@ static int alu_operation(arm7tdmi *cpu)
                              | (!result << COND_Z_SHIFT);
     uint32_t mask = ~(COND_N_BITMASK | COND_Z_BITMASK);
 
-    if (used_barrel_shift)
+    if (used_barrel_shift || !logical_op)
     {
         mask &= ~COND_C_BITMASK;
         altered_flags |= op_carry << COND_C_SHIFT;
