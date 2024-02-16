@@ -684,16 +684,23 @@ static int add_subtract(arm7tdmi *cpu)
 
     uint32_t source = read_register(cpu, rs);
     uint32_t result;
+    bool carry;
+    bool overflow;
     if (sub)
+    {
         result = source - offset;
+        carry = source >= offset; // set if no borrow
+        overflow = (((source ^ offset) & (source ^ result)) >> 31) & 1;
+    }
     else
+    {
         result = source + offset;
+        carry = offset > UINT32_MAX - source;
+        overflow = ((~(source ^ offset) & (source ^ result)) >> 31) & 1;
+    }
 
     prefetch(cpu);
     write_register(cpu, rd, result);
-
-    bool carry = offset > UINT32_MAX - source;
-    bool overflow = ((~(source ^ offset) & (source ^ result)) >> 31) & 1;
 
     cpu->cpsr = (cpu->cpsr & ~COND_FLAGS_MASK)
                 | (result & COND_N_BITMASK)
