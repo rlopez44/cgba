@@ -7,9 +7,14 @@ There are two builds of the emulator available:
 * A debug build created by running `make debug`
 
 # Running the Emulator
+The emulator accepts a game ROM and, optionally, a GBA BIOS file.
 The emulator is invoked as follows:
 
-    cgba <romfile>
+    cgba [-b biosfile] <romfile>
+
+>**_NOTE:_** Currently the emulator will skip the startup BIOS
+code when a BIOS file is provided because not enough of the
+system has been implemented for it to run correctly.
 
 # Installing the Emulator
 You can install the emulator to `/usr/local/bin` using

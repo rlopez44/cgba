@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cgba/bios.h"
 #include "cgba/cpu.h"
 #include "cgba/io.h"
 #include "cgba/memory.h"
@@ -214,7 +215,7 @@ open_error:
     exit(1);
 }
 
-gba_mem *init_memory(const char *romfile)
+gba_mem *init_memory(const char *romfile, const char *biosfile)
 {
     gba_mem *mem = malloc(sizeof(gba_mem));
     if (mem == NULL)
@@ -222,6 +223,11 @@ gba_mem *init_memory(const char *romfile)
 
     memset(mem, 0, sizeof(gba_mem));
     load_rom_or_die(mem, romfile);
+
+    if (biosfile != NULL && load_bios_file(mem, biosfile))
+        exit(1);
+
+    mem->has_bios = biosfile != NULL;
 
     return mem;
 }

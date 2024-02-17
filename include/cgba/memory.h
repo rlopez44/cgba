@@ -1,6 +1,7 @@
 #ifndef CGBA_MEMORY_H
 #define CGBA_MEMORY_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct arm7tdmi arm7tdmi;
@@ -22,6 +23,9 @@ typedef struct gba_mem {
     uint8_t rom[0x2000000];
     uint8_t sram[0x10000];
 
+    // whether we loaded a BIOS file
+    bool has_bios;
+
     arm7tdmi *cpu;
     gba_ppu *ppu;
     gba_gamepad *gamepad;
@@ -35,7 +39,7 @@ void write_word(gba_mem *mem, uint32_t addr, uint32_t val);
 void write_halfword(gba_mem *mem, uint32_t addr, uint16_t val);
 void write_byte(gba_mem *mem, uint32_t addr, uint8_t val);
 
-gba_mem *init_memory(const char *romfile);
+gba_mem *init_memory(const char *romfile, const char *biosfile);
 void deinit_memory(gba_mem *mem);
 
 #endif /* CGBA_MEMORY_H */

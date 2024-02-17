@@ -6,6 +6,33 @@
 #include "cgba/memory.h"
 #include "cpu/arm7tdmi.h"
 
+int load_bios_file(gba_mem *mem, const char *fname)
+{
+    FILE *fptr = fopen(fname, "rb");
+    if (!fptr)
+    {
+        perror("Could not open BIOS file");
+        goto open_error;
+    }
+
+    size_t bios_size = sizeof mem->bios;
+    size_t bytes_read = fread(mem->bios, 1, bios_size, fptr);
+
+    if (bytes_read != bios_size && !feof(fptr))
+    {
+        fputs("Error occured while reading from BIOS file\n", stderr);
+        goto load_error;
+    }
+
+    fclose(fptr);
+    return 0;
+
+load_error:
+    fclose(fptr);
+open_error:
+    return -1;
+}
+
 /*
  * Perform a GBA BIOS system call invoked by a SWI instruction.
  * Treats all syscalls as if they took on cycle to complete.

@@ -301,8 +301,9 @@ int software_interrupt(arm7tdmi *cpu)
     cpu->registers[R15] = 0x08;
     reload_pipeline(cpu);
 
-    // NOTE: since I don't support BIOS files yet I emulate syscalls in C
-    num_clocks += gba_syscall(cpu);
+    // emulate the BIOS call
+    if (!cpu->mem->has_bios)
+        num_clocks += gba_syscall(cpu);
 
     return num_clocks;
 }

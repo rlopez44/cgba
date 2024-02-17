@@ -22,12 +22,12 @@ static void connect_compoments(gba_system *gba)
     gba->mem->gamepad = gba->gamepad;
 }
 
-void init_system_or_die(gba_system *gba, const char *romfile)
+void init_system_or_die(gba_system *gba, const char *romfile, const char* biosfile)
 {
-    gba->skip_bios = true; // hardcoded until bios implemented
+    gba->skip_bios = true; // hardcoded until enough of system is implemented
     gba->running = true;
     gba->clocks_emulated = 0;
-    gba->mem = init_memory(romfile);
+    gba->mem = init_memory(romfile, biosfile);
     if (gba->mem == NULL)
     {
         fputs("Failed to allocate GBA memory\n", stderr);

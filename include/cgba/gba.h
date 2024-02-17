@@ -18,7 +18,7 @@ typedef struct gba_system {
     bool running;
 } gba_system;
 
-void init_system_or_die(gba_system *gba, const char *romfile);
+void init_system_or_die(gba_system *gba, const char *romfile, const char *biosfile);
 void deinit_system(gba_system *gba);
 void run_system(gba_system *gba);
 
