@@ -10,6 +10,10 @@ enum io_registers {
     VCOUNT    = 0x04000006,
 
     KEYINPUT  = 0x04000130,
+
+    IE        = 0x04000200,
+    IF        = 0x04000202,
+    IME       = 0x04000208,
 };
 
 // Write a byte to the given address in the I/O register address range

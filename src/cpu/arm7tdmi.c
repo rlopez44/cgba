@@ -5,6 +5,7 @@
 #include "arm7tdmi.h"
 #include "cgba/bios.h"
 #include "cgba/cpu.h"
+#include "cgba/interrupt.h"
 #include "cgba/log.h"
 #include "cgba/memory.h"
 
@@ -50,6 +51,9 @@ void skip_boot_screen(arm7tdmi *cpu)
 static int decode_and_execute(arm7tdmi *cpu)
 {
     int num_clocks;
+    if (interrupt_pending(cpu))
+        handle_interrupt(cpu);
+
     if (cpu->cpsr & T_BITMASK)
         num_clocks = decode_and_execute_thumb(cpu);
     else
@@ -601,6 +605,10 @@ arm7tdmi *init_cpu(void)
         for (int j = 0; j < ARM_NUM_BANKED_REGISTERS; ++j)
             cpu->banked_registers[i][j] = 0;
     }
+
+    cpu->ime_flag = ~1u;
+    cpu->irq_enable = 0xc000;
+    cpu->irq_request = 0xc000;
 
     return cpu;
 }

@@ -88,6 +88,10 @@ typedef struct arm7tdmi {
     uint32_t cpsr;
     uint32_t spsr[ARM_NUM_BANKS];
 
+    uint16_t irq_enable;
+    uint16_t irq_request;
+    uint32_t ime_flag;
+
     gba_mem *mem;
 } arm7tdmi;
 

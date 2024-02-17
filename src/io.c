@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include "cgba/cpu.h"
 #include "cgba/gamepad.h"
 #include "cgba/io.h"
 #include "cgba/memory.h"
@@ -34,6 +35,29 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
 
         case KEYINPUT: // read-only
             break;
+
+        case IE:
+            if (msb)
+                // bits 14-15 are unused
+                mem->cpu->irq_enable = (mem->cpu->irq_enable & 0xc0ff)
+                                       | (byte & 0x3f) << 8;
+            else
+                mem->cpu->irq_enable = (mem->cpu->irq_enable & 0xff00) | byte;
+            break;
+
+        case IF:
+            if (msb)
+                // bits 14-15 are unused
+                mem->cpu->irq_request = (mem->cpu->irq_request & 0xc0ff)
+                                       | (byte & 0x3f) << 8;
+            else
+                mem->cpu->irq_request = (mem->cpu->irq_request & 0xff00) | byte;
+            break;
+
+        case IME:
+            if (!msb) // only bit 0 used
+                mem->cpu->ime_flag = (mem->cpu->ime_flag & ~1u) | (byte & 1);
+            break;
     }
 }
 
@@ -67,6 +91,25 @@ uint8_t read_io_byte(gba_mem *mem, uint32_t addr)
                 byte = mem->gamepad->state >> 8;
             else
                 byte = mem->gamepad->state;
+            break;
+
+        case IE:
+            if (msb)
+                byte = mem->cpu->irq_enable >> 8;
+            else
+                byte = mem->cpu->irq_enable;
+            break;
+
+        case IF:
+            if (msb)
+                byte = mem->cpu->irq_request >> 8;
+            else
+                byte = mem->cpu->irq_request;
+            break;
+
+        case IME:
+            if (!msb) // only bit 0 used
+                byte = mem->cpu->ime_flag;
             break;
     }
 
