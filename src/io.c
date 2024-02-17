@@ -46,12 +46,14 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
             break;
 
         case IF:
+            // interrupts are acknowledged by writing a 1 to
+            // a given bit, in which case that bit is cleared
             if (msb)
                 // bits 14-15 are unused
-                mem->cpu->irq_request = (mem->cpu->irq_request & 0xc0ff)
-                                       | (byte & 0x3f) << 8;
+                mem->cpu->irq_request = mem->cpu->irq_request
+                                        & ~((byte & 0x3f) << 8);
             else
-                mem->cpu->irq_request = (mem->cpu->irq_request & 0xff00) | byte;
+                mem->cpu->irq_request = mem->cpu->irq_request & ~byte;
             break;
 
         case IME:
