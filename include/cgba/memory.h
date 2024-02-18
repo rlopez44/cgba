@@ -26,6 +26,10 @@ typedef struct gba_mem {
     // whether we loaded a BIOS file
     bool has_bios;
 
+    uint16_t irq_enable;
+    uint16_t irq_request;
+    uint32_t ime_flag;
+
     arm7tdmi *cpu;
     gba_ppu *ppu;
     gba_gamepad *gamepad;

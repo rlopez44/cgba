@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include "cgba/cpu.h"
 #include "cgba/gamepad.h"
 #include "cgba/io.h"
 #include "cgba/memory.h"
@@ -39,10 +38,10 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
         case IE:
             if (msb)
                 // bits 14-15 are unused
-                mem->cpu->irq_enable = (mem->cpu->irq_enable & 0xc0ff)
+                mem->irq_enable = (mem->irq_enable & 0xc0ff)
                                        | (byte & 0x3f) << 8;
             else
-                mem->cpu->irq_enable = (mem->cpu->irq_enable & 0xff00) | byte;
+                mem->irq_enable = (mem->irq_enable & 0xff00) | byte;
             break;
 
         case IF:
@@ -50,15 +49,15 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
             // a given bit, in which case that bit is cleared
             if (msb)
                 // bits 14-15 are unused
-                mem->cpu->irq_request = mem->cpu->irq_request
+                mem->irq_request = mem->irq_request
                                         & ~((byte & 0x3f) << 8);
             else
-                mem->cpu->irq_request = mem->cpu->irq_request & ~byte;
+                mem->irq_request = mem->irq_request & ~byte;
             break;
 
         case IME:
             if (!msb) // only bit 0 used
-                mem->cpu->ime_flag = (mem->cpu->ime_flag & ~1u) | (byte & 1);
+                mem->ime_flag = (mem->ime_flag & ~1u) | (byte & 1);
             break;
     }
 }
@@ -97,21 +96,21 @@ uint8_t read_io_byte(gba_mem *mem, uint32_t addr)
 
         case IE:
             if (msb)
-                byte = mem->cpu->irq_enable >> 8;
+                byte = mem->irq_enable >> 8;
             else
-                byte = mem->cpu->irq_enable;
+                byte = mem->irq_enable;
             break;
 
         case IF:
             if (msb)
-                byte = mem->cpu->irq_request >> 8;
+                byte = mem->irq_request >> 8;
             else
-                byte = mem->cpu->irq_request;
+                byte = mem->irq_request;
             break;
 
         case IME:
             if (!msb) // only bit 0 used
-                byte = mem->cpu->ime_flag;
+                byte = mem->ime_flag;
             break;
     }
 

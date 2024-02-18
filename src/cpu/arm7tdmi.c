@@ -606,10 +606,6 @@ arm7tdmi *init_cpu(void)
             cpu->banked_registers[i][j] = 0;
     }
 
-    cpu->ime_flag = ~1u;
-    cpu->irq_enable = 0xc000;
-    cpu->irq_request = 0xc000;
-
     return cpu;
 }
 

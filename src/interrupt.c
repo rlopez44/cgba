@@ -1,15 +1,16 @@
 #include <stdbool.h>
 #include "cgba/cpu.h"
+#include "cgba/memory.h"
 #include "cpu/arm7tdmi.h"
 
 #define IRQ_VECTOR 0x18
 
 bool interrupt_pending(arm7tdmi *cpu)
 {
-    bool interrupt_possible = cpu->irq_enable & cpu->irq_request & 0x3fff;
+    bool interrupt_possible = cpu->mem->irq_enable & cpu->mem->irq_request & 0x3fff;
     bool cpsr_irq_disable = cpu->cpsr & IRQ_DISABLE;
 
-    return cpu->ime_flag && !cpsr_irq_disable && interrupt_possible;
+    return cpu->mem->ime_flag && !cpsr_irq_disable && interrupt_possible;
 }
 
 

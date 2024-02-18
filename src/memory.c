@@ -229,6 +229,10 @@ gba_mem *init_memory(const char *romfile, const char *biosfile)
 
     mem->has_bios = biosfile != NULL;
 
+    mem->ime_flag = ~1u;
+    mem->irq_enable = 0xc000;
+    mem->irq_request = 0xc000;
+
     return mem;
 }
 
