@@ -51,9 +51,6 @@ void skip_boot_screen(arm7tdmi *cpu)
 static int decode_and_execute(arm7tdmi *cpu)
 {
     int num_clocks;
-    if (interrupt_pending(cpu))
-        handle_interrupt(cpu);
-
     if (cpu->cpsr & T_BITMASK)
         num_clocks = decode_and_execute_thumb(cpu);
     else
@@ -573,6 +570,16 @@ int run_cpu(arm7tdmi *cpu)
 #ifdef DEBUG
     log_cpu_state(cpu, stdout);
 #endif
+
+    if (interrupt_pending(cpu))
+    {
+#ifdef DEBUG
+        fputs("Servicing IRQ\n", stderr);
+#endif
+        handle_interrupt(cpu);
+        return 1;
+    }
+
     return decode_and_execute(cpu);
 }
 
