@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cgba/interrupt.h"
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
 #include "SDL.h"
@@ -203,9 +204,7 @@ static void enter_hblank(gba_ppu *ppu)
     ppu->dispstat |= 0x2; // set HBlank flag
 
     if (ppu->dispstat & (1 << 4))
-    {
-        // TODO: HBlank IRQ
-    }
+        ppu->mem->irq_request |= IRQ_HBLANK;
 
     if (ppu->vcount < VBLANK_START)
         render_scanline(ppu);
@@ -215,9 +214,7 @@ static void enter_vblank(gba_ppu *ppu)
 {
     ppu->dispstat |= 0x1; // VBlank flag
     if (ppu->dispstat & (1 << 3))
-    {
-        // TODO: VBlank IRQ
-    }
+        ppu->mem->irq_request |= IRQ_VBLANK;
     render_frame(ppu);
 }
 
@@ -232,9 +229,7 @@ static void update_vcount(gba_ppu *ppu)
     {
         ppu->dispstat |= 0x4; // V-Counter flag
         if (ppu->dispstat & (1 << 5))
-        {
-            // TODO: V-Counter IRQ
-        }
+            ppu->mem->irq_request |= IRQ_VCOUNT;
     }
     else
     {
