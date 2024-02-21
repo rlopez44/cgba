@@ -8,6 +8,7 @@
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
 #include "SDL_events.h"
+#include "SDL_timer.h"
 
 static void connect_compoments(gba_system *gba)
 {
@@ -27,6 +28,7 @@ void init_system_or_die(gba_system *gba, const char *romfile, const char* biosfi
     gba->skip_bios = true; // hardcoded until enough of system is implemented
     gba->running = true;
     gba->clocks_emulated = 0;
+    gba->next_frame_time = GBA_FRAME_DURATION_MS;
     gba->mem = init_memory(romfile, biosfile);
     if (gba->mem == NULL)
     {
@@ -95,6 +97,15 @@ static void poll_input(gba_system *gba)
     }
 }
 
+static void throttle_emulation(gba_system *gba)
+{
+    uint64_t curr_time = SDL_GetTicks64();
+    if (curr_time < gba->next_frame_time)
+        SDL_Delay(gba->next_frame_time - curr_time);
+
+    gba->next_frame_time = SDL_GetTicks64() + GBA_FRAME_DURATION_MS;
+}
+
 void run_system(gba_system *gba)
 {
     // emulate one second until we implement a basic PPU
@@ -109,6 +120,7 @@ void run_system(gba_system *gba)
         {
             gba->ppu->frame_presented_signal = false;
             poll_input(gba);
+            throttle_emulation(gba);
         }
     }
 }

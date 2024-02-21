@@ -8,12 +8,16 @@
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
 
+/* frame duration is 16.743 ms */
+#define GBA_FRAME_DURATION_MS 17
+
 typedef struct gba_system {
     arm7tdmi *cpu;
     gba_mem *mem;
     gba_ppu *ppu;
     gba_gamepad *gamepad;
     uint64_t clocks_emulated;
+    uint64_t next_frame_time;
     bool skip_bios;
     bool running;
 } gba_system;
