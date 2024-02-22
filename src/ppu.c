@@ -17,11 +17,22 @@
 #define VBLANK_END    227 /* scanline end for vblank */
 #define NUM_SCANLINES 228
 
+#define TILES_PER_SCANLINE (FRAME_WIDTH / 8)
+
+#define KB 1024
+
 /* XBGR1555 */
 #define WHITE 0xffff
 
 #define PRAM_START 0x05000000
 #define VRAM_START 0x06000000
+
+enum PPU_BGNO {
+    PPU_BG0,
+    PPU_BG1,
+    PPU_BG2,
+    PPU_BG3,
+};
 
 gba_ppu *init_ppu(void)
 {
@@ -126,6 +137,99 @@ frame_render_error:
     exit(1);
 }
 
+static void fetch_tile_map_entries(gba_ppu *ppu, uint16_t dest[static TILES_PER_SCANLINE])
+{
+    int map_base_offset = (ppu->bg3cnt >> 8) & 0x1f;
+    uint32_t map_base_addr = VRAM_START + 2*KB*map_base_offset;
+
+    uint32_t scanline_start = map_base_addr + 2*32*(ppu->vcount / 8);
+
+    for (int i = 0; i < TILES_PER_SCANLINE; ++i)
+    {
+        uint32_t curr_addr = scanline_start + 2*i;
+        dest[i] = read_halfword(ppu->mem, curr_addr);
+    }
+}
+
+static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno)
+{
+    // TODO: account for scrolling of the BG
+    (void)bgno;
+
+    if (ppu->bg3cnt & (1 << 7))
+    {
+        fputs("8-bit color mode not implemented yet\n", stderr);
+        exit(1);
+    }
+    else if (ppu->bg3cnt & (1 << 6))
+    {
+        fputs("Mosaic effect not implemented yet\n", stderr);
+        exit(1);
+    }
+
+    int tile_base_offset = (ppu->bg3cnt >> 2) & 0x3;
+    uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
+
+    uint16_t tile_map_entries[TILES_PER_SCANLINE] = {0};
+    fetch_tile_map_entries(ppu, tile_map_entries);
+
+    uint16_t tile_colors[FRAME_WIDTH] = {0};
+    for (int i = 0; i < TILES_PER_SCANLINE; ++i)
+    {
+        int tileno = tile_map_entries[i] & 0x3ff;
+        int paletteno = (tile_map_entries[i] >> 12) & 0xf;
+        int yoffset = ppu->vcount % 8;
+        uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
+        uint32_t palette_offset = PRAM_START + 32*paletteno;
+
+        for (int j = 0; j < 4; ++j)
+        {
+            uint8_t palette_idx = read_byte(ppu->mem, line_addr + j);
+            uint8_t left_dot_idx = palette_idx & 0xf;
+            uint8_t right_dot_idx = (palette_idx >> 4) & 0xf;
+            tile_colors[8*i + 2*j] = read_halfword(ppu->mem, palette_offset + 2*left_dot_idx);
+            tile_colors[8*i + 2*j + 1] = read_halfword(ppu->mem, palette_offset + 2*right_dot_idx);
+        }
+    }
+
+    size_t framebuff_offset = FRAME_WIDTH * ppu->vcount;
+    memcpy(ppu->frame_buffer + framebuff_offset, tile_colors, sizeof tile_colors);
+}
+
+static void render_background(gba_ppu *ppu, enum PPU_BGNO bgno)
+{
+    if (bgno != PPU_BG3)
+    {
+        fprintf(stderr, "Unimplemented background layer: BG%d\n", bgno);
+        exit(1);
+    }
+
+    int map_size = (ppu->bg3cnt >> 13) & 0x3;
+    if (map_size)
+    {
+        fprintf(stderr, "Can only handle BG map size 0. Got: %d\n", map_size);
+        exit(1);
+    }
+
+    render_tile_data(ppu, bgno);
+}
+
+static void render_mode0_scanline(gba_ppu *ppu)
+{
+    // for now only handle BG3
+    bool bg3_enabled = ppu->dispcnt & (1 << 11);
+    if (bg3_enabled)
+    {
+        render_background(ppu, PPU_BG3);
+    }
+    else
+    {
+        uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[base_offset + i] = WHITE;
+    }
+}
+
 static void render_mode3_scanline(gba_ppu *ppu)
 {
     uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
@@ -188,6 +292,10 @@ static void render_scanline(gba_ppu *ppu)
 
         case 0x4:
             render_mode4_scanline(ppu);
+            break;
+
+        case 0x0:
+            render_mode0_scanline(ppu);
             break;
 
         default:

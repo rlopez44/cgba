@@ -14,6 +14,7 @@ typedef struct gba_ppu {
     uint16_t dispcnt;
     uint16_t dispstat;
     uint8_t vcount;
+    uint16_t bg3cnt;
 
     gba_mem *mem;
 

@@ -9,6 +9,11 @@ enum io_registers {
     DISPSTAT  = 0x04000004,
     VCOUNT    = 0x04000006,
 
+    BG0CNT    = 0x04000008,
+    BG1CNT    = 0x0400000a,
+    BG2CNT    = 0x0400000c,
+    BG3CNT    = 0x0400000e,
+
     KEYINPUT  = 0x04000130,
 
     IE        = 0x04000200,
