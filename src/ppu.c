@@ -178,19 +178,30 @@ static void render_tile_data(gba_ppu *ppu,
     uint16_t px_colors[FRAME_WIDTH] = {0};
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
-        int tileno = tile_map_entries[i] & 0x3ff;
-        int paletteno = (tile_map_entries[i] >> 12) & 0xf;
-        int yoffset = ppu->vcount % 8;
+        uint16_t tile_map_entry = tile_map_entries[i];
+        int tileno = tile_map_entry & 0x3ff;
+        int paletteno = (tile_map_entry >> 12) & 0xf;
+        bool yflip = tile_map_entry & (1 << 11);
+        bool xflip = tile_map_entry & (1 << 10);
+        int yoffset = yflip ? 7 - ppu->vcount % 8 : ppu->vcount % 8;
         uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
         uint32_t palette_offset = PRAM_START + 32*paletteno;
 
         for (int j = 0; j < 4; ++j)
         {
-            uint8_t palette_idx = read_byte(ppu->mem, line_addr + j);
+            uint32_t offset = xflip ? 3 - j : j;
+            uint8_t palette_idx = read_byte(ppu->mem, line_addr + offset);
             uint8_t left_px_idx = palette_idx & 0xf;
             uint8_t right_px_idx = (palette_idx >> 4) & 0xf;
-            int px_base = 8*i + 2*j;
 
+            if (xflip)
+            {
+                uint8_t tmp = left_px_idx;
+                left_px_idx = right_px_idx;
+                right_px_idx = tmp;
+            }
+
+            int px_base = 8*i + 2*j;
             if (px_transparency[px_base])
                 px_colors[px_base] = read_halfword(ppu->mem, palette_offset + 2*left_px_idx);
 
