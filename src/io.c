@@ -32,6 +32,33 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
         case VCOUNT: // read-only
             break;
 
+        case BG0CNT:
+            if (msb)
+                mem->ppu->bg0cnt = (mem->ppu->bg0cnt & 0x00ff)
+                                   | byte << 8;
+            else
+                mem->ppu->bg0cnt = (mem->ppu->bg0cnt & 0xff00)
+                                   | (byte & ~0x30u);
+            break;
+
+        case BG1CNT:
+            if (msb)
+                mem->ppu->bg1cnt = (mem->ppu->bg1cnt & 0x00ff)
+                                   | byte << 8;
+            else
+                mem->ppu->bg1cnt = (mem->ppu->bg1cnt & 0xff00)
+                                   | (byte & ~0x30u);
+            break;
+
+        case BG2CNT:
+            if (msb)
+                mem->ppu->bg2cnt = (mem->ppu->bg2cnt & 0x00ff)
+                                   | byte << 8;
+            else
+                mem->ppu->bg2cnt = (mem->ppu->bg2cnt & 0xff00)
+                                   | (byte & ~0x30u);
+            break;
+
         case BG3CNT:
             if (msb)
                 mem->ppu->bg3cnt = (mem->ppu->bg3cnt & 0x00ff)
@@ -94,6 +121,27 @@ uint8_t read_io_byte(gba_mem *mem, uint32_t addr)
 
         case VCOUNT:
             byte = msb ? 0 : mem->ppu->vcount;
+            break;
+
+        case BG0CNT:
+            if (msb)
+                byte = mem->ppu->bg0cnt >> 8;
+            else
+                byte = mem->ppu->bg0cnt;
+            break;
+
+        case BG1CNT:
+            if (msb)
+                byte = mem->ppu->bg1cnt >> 8;
+            else
+                byte = mem->ppu->bg1cnt;
+            break;
+
+        case BG2CNT:
+            if (msb)
+                byte = mem->ppu->bg2cnt >> 8;
+            else
+                byte = mem->ppu->bg2cnt;
             break;
 
         case BG3CNT:

@@ -137,9 +137,26 @@ frame_render_error:
     exit(1);
 }
 
-static void fetch_tile_map_entries(gba_ppu *ppu, uint16_t dest[static TILES_PER_SCANLINE])
+static uint16_t get_bgcnt(gba_ppu *ppu, enum PPU_BGNO bgno)
 {
-    int map_base_offset = (ppu->bg3cnt >> 8) & 0x1f;
+    uint16_t bgcnt;
+    switch (bgno)
+    {
+        case PPU_BG0: bgcnt = ppu->bg0cnt; break;
+        case PPU_BG1: bgcnt = ppu->bg1cnt; break;
+        case PPU_BG2: bgcnt = ppu->bg2cnt; break;
+        case PPU_BG3: bgcnt = ppu->bg3cnt; break;
+    }
+
+    return bgcnt;
+}
+
+static void fetch_tile_map_entries(gba_ppu *ppu,
+                                   enum PPU_BGNO bgno,
+                                   uint16_t dest[static TILES_PER_SCANLINE])
+{
+    uint16_t bgcnt = get_bgcnt(ppu, bgno);
+    int map_base_offset = (bgcnt >> 8) & 0x1f;
     uint32_t map_base_addr = VRAM_START + 2*KB*map_base_offset;
 
     uint32_t scanline_start = map_base_addr + 2*32*(ppu->vcount / 8);
@@ -157,24 +174,23 @@ static void render_tile_data(gba_ppu *ppu,
                              uint16_t px_colors[static FRAME_WIDTH])
 {
     // TODO: account for scrolling of the BG
-    (void)bgno;
-
-    if (ppu->bg3cnt & (1 << 7))
+    uint16_t bgcnt = get_bgcnt(ppu, bgno);
+    if (bgcnt & (1 << 7))
     {
         fputs("8-bit color mode not implemented yet\n", stderr);
         exit(1);
     }
-    else if (ppu->bg3cnt & (1 << 6))
+    else if (bgcnt & (1 << 6))
     {
         fputs("Mosaic effect not implemented yet\n", stderr);
         exit(1);
     }
 
-    int tile_base_offset = (ppu->bg3cnt >> 2) & 0x3;
+    int tile_base_offset = (bgcnt >> 2) & 0x3;
     uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
 
     uint16_t tile_map_entries[TILES_PER_SCANLINE] = {0};
-    fetch_tile_map_entries(ppu, tile_map_entries);
+    fetch_tile_map_entries(ppu, bgno, tile_map_entries);
 
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
@@ -222,13 +238,7 @@ static void render_background(gba_ppu *ppu,
                               bool px_transparency[static FRAME_WIDTH],
                               uint16_t px_colors[static FRAME_WIDTH])
 {
-    if (bgno != PPU_BG3)
-    {
-        fprintf(stderr, "Unimplemented background layer: BG%d\n", bgno);
-        exit(1);
-    }
-
-    int map_size = (ppu->bg3cnt >> 13) & 0x3;
+    int map_size = (get_bgcnt(ppu, bgno) >> 13) & 0x3;
     if (map_size)
     {
         fprintf(stderr, "Can only handle BG map size 0. Got: %d\n", map_size);
@@ -240,8 +250,19 @@ static void render_background(gba_ppu *ppu,
 
 static void render_mode0_scanline(gba_ppu *ppu)
 {
-    // for now only handle BG3
     bool bg3_enabled = ppu->dispcnt & (1 << 11);
+    bool bg2_enabled = ppu->dispcnt & (1 << 10);
+    bool bg1_enabled = ppu->dispcnt & (1 << 9);
+    bool bg0_enabled = ppu->dispcnt & (1 << 8);
+
+    bool any_bg = bg0_enabled || bg1_enabled || bg2_enabled || bg3_enabled;
+    if (!any_bg)
+    {
+        uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
+        for (int i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[base_offset + i] = WHITE;
+        return;
+    }
 
     bool px_transparency[FRAME_WIDTH];
     memset(px_transparency, 1, sizeof px_transparency);
@@ -250,16 +271,23 @@ static void render_mode0_scanline(gba_ppu *ppu)
     uint16_t backdrop = read_halfword(ppu->mem, PRAM_START);
     for (int i = 0; i < FRAME_WIDTH; ++i)
         px_colors[i] = backdrop;
+
+    // Hardcoding the BG render order works for
+    // Kirby - Nightmare in Dream Land because
+    // the priority is fixed at BG0 > BG1 > BG2 > BG3.
+    // TODO: actually take priority into account
+    // instead of hardcoding draw order
+    if (bg0_enabled)
+        render_background(ppu, PPU_BG0, px_transparency, px_colors);
+
+    if (bg1_enabled)
+        render_background(ppu, PPU_BG1, px_transparency, px_colors);
+
+    if (bg2_enabled)
+        render_background(ppu, PPU_BG2, px_transparency, px_colors);
+
     if (bg3_enabled)
-    {
         render_background(ppu, PPU_BG3, px_transparency, px_colors);
-    }
-    else
-    {
-        uint32_t base_offset = FRAME_WIDTH * ppu->vcount;
-        for (int i = 0; i < FRAME_WIDTH; ++i)
-            ppu->frame_buffer[base_offset + i] = WHITE;
-    }
 
     size_t framebuff_offset = FRAME_WIDTH * ppu->vcount;
     memcpy(ppu->frame_buffer + framebuff_offset, px_colors, sizeof px_colors);
