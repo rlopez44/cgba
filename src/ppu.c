@@ -153,7 +153,8 @@ static void fetch_tile_map_entries(gba_ppu *ppu, uint16_t dest[static TILES_PER_
 
 static void render_tile_data(gba_ppu *ppu,
                              enum PPU_BGNO bgno,
-                             bool px_transparency[static FRAME_WIDTH])
+                             bool px_transparency[static FRAME_WIDTH],
+                             uint16_t px_colors[static FRAME_WIDTH])
 {
     // TODO: account for scrolling of the BG
     (void)bgno;
@@ -175,7 +176,6 @@ static void render_tile_data(gba_ppu *ppu,
     uint16_t tile_map_entries[TILES_PER_SCANLINE] = {0};
     fetch_tile_map_entries(ppu, tile_map_entries);
 
-    uint16_t px_colors[FRAME_WIDTH] = {0};
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
         uint16_t tile_map_entry = tile_map_entries[i];
@@ -212,12 +212,12 @@ static void render_tile_data(gba_ppu *ppu,
             px_transparency[px_base + 1] = !right_px_idx;
         }
     }
-
-    size_t framebuff_offset = FRAME_WIDTH * ppu->vcount;
-    memcpy(ppu->frame_buffer + framebuff_offset, px_colors, sizeof px_colors);
 }
 
-static void render_background(gba_ppu *ppu, enum PPU_BGNO bgno)
+static void render_background(gba_ppu *ppu,
+                              enum PPU_BGNO bgno,
+                              bool px_transparency[static FRAME_WIDTH],
+                              uint16_t px_colors[static FRAME_WIDTH])
 {
     if (bgno != PPU_BG3)
     {
@@ -232,18 +232,21 @@ static void render_background(gba_ppu *ppu, enum PPU_BGNO bgno)
         exit(1);
     }
 
-    bool px_transparency[FRAME_WIDTH];
-    memset(px_transparency, 1, sizeof px_transparency);
-    render_tile_data(ppu, bgno, px_transparency);
+    render_tile_data(ppu, bgno, px_transparency, px_colors);
 }
 
 static void render_mode0_scanline(gba_ppu *ppu)
 {
     // for now only handle BG3
     bool bg3_enabled = ppu->dispcnt & (1 << 11);
+
+    bool px_transparency[FRAME_WIDTH];
+    memset(px_transparency, 1, sizeof px_transparency);
+
+    uint16_t px_colors[FRAME_WIDTH] = {0};
     if (bg3_enabled)
     {
-        render_background(ppu, PPU_BG3);
+        render_background(ppu, PPU_BG3, px_transparency, px_colors);
     }
     else
     {
@@ -251,6 +254,9 @@ static void render_mode0_scanline(gba_ppu *ppu)
         for (int i = 0; i < FRAME_WIDTH; ++i)
             ppu->frame_buffer[base_offset + i] = WHITE;
     }
+
+    size_t framebuff_offset = FRAME_WIDTH * ppu->vcount;
+    memcpy(ppu->frame_buffer + framebuff_offset, px_colors, sizeof px_colors);
 }
 
 static void render_mode3_scanline(gba_ppu *ppu)
