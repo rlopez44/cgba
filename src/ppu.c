@@ -243,7 +243,10 @@ static void render_mode0_scanline(gba_ppu *ppu)
     bool px_transparency[FRAME_WIDTH];
     memset(px_transparency, 1, sizeof px_transparency);
 
-    uint16_t px_colors[FRAME_WIDTH] = {0};
+    uint16_t px_colors[FRAME_WIDTH];
+    uint16_t backdrop = read_halfword(ppu->mem, PRAM_START);
+    for (int i = 0; i < FRAME_WIDTH; ++i)
+        px_colors[i] = backdrop;
     if (bg3_enabled)
     {
         render_background(ppu, PPU_BG3, px_transparency, px_colors);
