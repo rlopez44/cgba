@@ -202,14 +202,17 @@ static void render_tile_data(gba_ppu *ppu,
             }
 
             int px_base = 8*i + 2*j;
-            if (px_transparency[px_base])
+            if (px_transparency[px_base] && left_px_idx)
+            {
                 px_colors[px_base] = read_halfword(ppu->mem, palette_offset + 2*left_px_idx);
+                px_transparency[px_base] = false;
+            }
 
-            if (px_transparency[px_base + 1])
+            if (px_transparency[px_base + 1] && right_px_idx)
+            {
                 px_colors[px_base + 1] = read_halfword(ppu->mem, palette_offset + 2*right_px_idx);
-
-            px_transparency[px_base] = !left_px_idx;
-            px_transparency[px_base + 1] = !right_px_idx;
+                px_transparency[px_base + 1] = false;
+            }
         }
     }
 }
