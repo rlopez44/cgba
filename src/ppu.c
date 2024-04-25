@@ -238,7 +238,7 @@ static void render_background(gba_ppu *ppu,
                               bool px_transparency[static FRAME_WIDTH],
                               uint16_t px_colors[static FRAME_WIDTH])
 {
-    int map_size = (get_bgcnt(ppu, bgno) >> 13) & 0x3;
+    int map_size = (get_bgcnt(ppu, bgno) >> 14) & 0x3;
     if (map_size)
     {
         fprintf(stderr, "Can only handle BG map size 0. Got: %d\n", map_size);
