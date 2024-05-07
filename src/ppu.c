@@ -34,6 +34,11 @@ enum PPU_BGNO {
     PPU_BG3,
 };
 
+typedef struct scanline_data {
+    uint16_t px_colors[FRAME_WIDTH];
+    bool px_transparency[FRAME_WIDTH];
+} scanline_data;
+
 gba_ppu *init_ppu(void)
 {
     gba_ppu *ppu = malloc(sizeof(gba_ppu));
@@ -168,10 +173,7 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
     }
 }
 
-static void render_tile_data(gba_ppu *ppu,
-                             enum PPU_BGNO bgno,
-                             bool px_transparency[static FRAME_WIDTH],
-                             uint16_t px_colors[static FRAME_WIDTH])
+static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
 {
     // TODO: account for scrolling of the BG
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
@@ -218,25 +220,24 @@ static void render_tile_data(gba_ppu *ppu,
             }
 
             int px_base = 8*i + 2*j;
-            if (px_transparency[px_base] && left_px_idx)
+            if (scdata->px_transparency[px_base] && left_px_idx)
             {
-                px_colors[px_base] = read_halfword(ppu->mem, palette_offset + 2*left_px_idx);
-                px_transparency[px_base] = false;
+                scdata->px_colors[px_base] = read_halfword(ppu->mem,
+                                                           palette_offset + 2*left_px_idx);
+                scdata->px_transparency[px_base] = false;
             }
 
-            if (px_transparency[px_base + 1] && right_px_idx)
+            if (scdata->px_transparency[px_base + 1] && right_px_idx)
             {
-                px_colors[px_base + 1] = read_halfword(ppu->mem, palette_offset + 2*right_px_idx);
-                px_transparency[px_base + 1] = false;
+                scdata->px_colors[px_base + 1] = read_halfword(ppu->mem,
+                                                               palette_offset + 2*right_px_idx);
+                scdata->px_transparency[px_base + 1] = false;
             }
         }
     }
 }
 
-static void render_background(gba_ppu *ppu,
-                              enum PPU_BGNO bgno,
-                              bool px_transparency[static FRAME_WIDTH],
-                              uint16_t px_colors[static FRAME_WIDTH])
+static void render_background(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
 {
     int map_size = (get_bgcnt(ppu, bgno) >> 14) & 0x3;
     if (map_size)
@@ -245,7 +246,7 @@ static void render_background(gba_ppu *ppu,
         exit(1);
     }
 
-    render_tile_data(ppu, bgno, px_transparency, px_colors);
+    render_tile_data(ppu, bgno, scdata);
 }
 
 static void render_mode0_scanline(gba_ppu *ppu)
@@ -264,13 +265,12 @@ static void render_mode0_scanline(gba_ppu *ppu)
         return;
     }
 
-    bool px_transparency[FRAME_WIDTH];
-    memset(px_transparency, 1, sizeof px_transparency);
+    scanline_data scdata;
+    memset(scdata.px_transparency, 1, sizeof scdata.px_transparency);
 
-    uint16_t px_colors[FRAME_WIDTH];
     uint16_t backdrop = read_halfword(ppu->mem, PRAM_START);
     for (int i = 0; i < FRAME_WIDTH; ++i)
-        px_colors[i] = backdrop;
+        scdata.px_colors[i] = backdrop;
 
     // Hardcoding the BG render order works for
     // Kirby - Nightmare in Dream Land because
@@ -278,19 +278,19 @@ static void render_mode0_scanline(gba_ppu *ppu)
     // TODO: actually take priority into account
     // instead of hardcoding draw order
     if (bg0_enabled)
-        render_background(ppu, PPU_BG0, px_transparency, px_colors);
+        render_background(ppu, PPU_BG0, &scdata);
 
     if (bg1_enabled)
-        render_background(ppu, PPU_BG1, px_transparency, px_colors);
+        render_background(ppu, PPU_BG1, &scdata);
 
     if (bg2_enabled)
-        render_background(ppu, PPU_BG2, px_transparency, px_colors);
+        render_background(ppu, PPU_BG2, &scdata);
 
     if (bg3_enabled)
-        render_background(ppu, PPU_BG3, px_transparency, px_colors);
+        render_background(ppu, PPU_BG3, &scdata);
 
     size_t framebuff_offset = FRAME_WIDTH * ppu->vcount;
-    memcpy(ppu->frame_buffer + framebuff_offset, px_colors, sizeof px_colors);
+    memcpy(ppu->frame_buffer + framebuff_offset, scdata.px_colors, sizeof scdata.px_colors);
 }
 
 static void render_mode3_scanline(gba_ppu *ppu)
