@@ -14,6 +14,18 @@ enum io_registers {
     BG2CNT    = 0x0400000c,
     BG3CNT    = 0x0400000e,
 
+    BG0HOFS   = 0x04000010,
+    BG0VOFS   = 0x04000012,
+
+    BG1HOFS   = 0x04000014,
+    BG1VOFS   = 0x04000016,
+
+    BG2HOFS   = 0x04000018,
+    BG2VOFS   = 0x0400001a,
+
+    BG3HOFS   = 0x0400001c,
+    BG3VOFS   = 0x0400001e,
+
     KEYINPUT  = 0x04000130,
 
     IE        = 0x04000200,

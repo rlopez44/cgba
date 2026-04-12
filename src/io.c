@@ -8,7 +8,8 @@
 void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
 {
     bool msb = addr & 0x1; // addr = upper byte of 16-bit register
-    switch (addr & ~0x1)
+    uint32_t normed_addr = addr & ~0x1;
+    switch (normed_addr)
     {
         case DISPCNT:
             if (msb)
@@ -67,6 +68,36 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
                 mem->ppu->bg3cnt = (mem->ppu->bg3cnt & 0xff00)
                                    | (byte & ~0x30u);
             break;
+
+        case BG0HOFS:
+        case BG1HOFS:
+        case BG2HOFS:
+        case BG3HOFS:
+        {
+            uint32_t regoffset = (normed_addr - BG0HOFS) / 4;
+            uint16_t *reg = mem->ppu->bghoffsets + regoffset;
+            if (msb)
+                *reg = (*reg & 0xff) | (uint16_t)(byte & 3) << 8;
+            else
+                *reg = (*reg & 0x100) | byte;
+
+            break;
+        }
+
+        case BG0VOFS:
+        case BG1VOFS:
+        case BG2VOFS:
+        case BG3VOFS:
+        {
+            uint32_t regoffset = (normed_addr - BG0VOFS) / 4;
+            uint16_t *reg = mem->ppu->bgvoffsets + regoffset;
+            if (msb)
+                *reg = (*reg & 0xff) | (uint16_t)(byte & 3) << 8;
+            else
+                *reg = (*reg & 0x100) | byte;
+
+            break;
+        }
 
         case KEYINPUT: // read-only
             break;

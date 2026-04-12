@@ -19,6 +19,9 @@ typedef struct gba_ppu {
     uint16_t bg2cnt;
     uint16_t bg3cnt;
 
+    uint16_t bghoffsets[4];
+    uint16_t bgvoffsets[4];
+
     gba_mem *mem;
 
     uint16_t frame_buffer[FRAME_WIDTH*FRAME_HEIGHT]; // XBGR1555
