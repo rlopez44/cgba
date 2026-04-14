@@ -5,6 +5,44 @@
 #include "cgba/memory.h"
 #include "cgba/ppu.h"
 
+static inline void write_bg_scroll_register(gba_mem *mem,
+                                            enum io_registers regname,
+                                            uint8_t byte,
+                                            bool msb)
+{
+    uint32_t regoffset;
+    uint16_t *reg;
+    switch (regname)
+    {
+        case BG0HOFS:
+        case BG1HOFS:
+        case BG2HOFS:
+        case BG3HOFS:
+            regoffset = (regname - BG0HOFS) / 4;
+            reg = mem->ppu->bghoffsets + regoffset;
+            break;
+
+        case BG0VOFS:
+        case BG1VOFS:
+        case BG2VOFS:
+        case BG3VOFS:
+            regoffset = (regname - BG0VOFS) / 4;
+            reg = mem->ppu->bgvoffsets + regoffset;
+            break;
+
+        default:
+            fprintf(stderr,
+                    "Error: BG scroll register helper invalid register: %08x\n",
+                    regname);
+            exit(1);
+    }
+
+    if (msb)
+        *reg = (*reg & 0xff) | (uint16_t)(byte & 0x3) << 8;
+    else
+        *reg = (*reg & 0x300) | byte;
+}
+
 void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
 {
     bool msb = addr & 0x1; // addr = upper byte of 16-bit register
@@ -73,31 +111,11 @@ void write_io_byte(gba_mem *mem, uint32_t addr, uint8_t byte)
         case BG1HOFS:
         case BG2HOFS:
         case BG3HOFS:
-        {
-            uint32_t regoffset = (normed_addr - BG0HOFS) / 4;
-            uint16_t *reg = mem->ppu->bghoffsets + regoffset;
-            if (msb)
-                *reg = (*reg & 0xff) | (uint16_t)(byte & 3) << 8;
-            else
-                *reg = (*reg & 0x100) | byte;
-
-            break;
-        }
-
         case BG0VOFS:
         case BG1VOFS:
         case BG2VOFS:
         case BG3VOFS:
-        {
-            uint32_t regoffset = (normed_addr - BG0VOFS) / 4;
-            uint16_t *reg = mem->ppu->bgvoffsets + regoffset;
-            if (msb)
-                *reg = (*reg & 0xff) | (uint16_t)(byte & 3) << 8;
-            else
-                *reg = (*reg & 0x100) | byte;
-
-            break;
-        }
+            write_bg_scroll_register(mem, normed_addr, byte, msb);
 
         case KEYINPUT: // read-only
             break;
