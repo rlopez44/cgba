@@ -39,6 +39,12 @@ typedef struct scanline_data {
     bool px_transparency[FRAME_WIDTH];
 } scanline_data;
 
+static inline uint8_t get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno)
+{
+    uint16_t yoff = ppu->bgvoffsets[bgno];
+    return ((uint16_t)ppu->vcount + yoff) & 0xff;
+}
+
 gba_ppu *init_ppu(void)
 {
     gba_ppu *ppu = malloc(sizeof(gba_ppu));
@@ -160,14 +166,16 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
                                    enum PPU_BGNO bgno,
                                    uint16_t dest[static TILES_PER_SCANLINE])
 {
+    uint8_t effective_vcount = get_effective_vcount(ppu, bgno);
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int map_base_offset = (bgcnt >> 8) & 0x1f;
     uint32_t map_base_addr = VRAM_START + 2*KB*map_base_offset;
 
-    uint32_t scanline_start = map_base_addr + 2*32*(ppu->vcount / 8);
+    uint32_t scanline_start = map_base_addr + 2*32*(effective_vcount / 8);
 
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
+        // TODO: implement horizontal scrolling
         uint32_t curr_addr = scanline_start + 2*i;
         dest[i] = read_halfword(ppu->mem, curr_addr);
     }
@@ -201,7 +209,8 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
         int paletteno = (tile_map_entry >> 12) & 0xf;
         bool yflip = tile_map_entry & (1 << 11);
         bool xflip = tile_map_entry & (1 << 10);
-        int yoffset = yflip ? 7 - ppu->vcount % 8 : ppu->vcount % 8;
+        uint8_t effective_vcount = get_effective_vcount(ppu, bgno);
+        int yoffset = yflip ? 7 - effective_vcount % 8 : effective_vcount % 8;
         uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
         uint32_t palette_offset = PRAM_START + 32*paletteno;
 
