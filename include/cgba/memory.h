@@ -26,6 +26,8 @@ typedef struct gba_mem {
     // whether we loaded a BIOS file
     bool has_bios;
 
+    uint32_t last_fetched_bios_opcode;
+
     uint16_t irq_enable;
     uint16_t irq_request;
     uint32_t ime_flag;

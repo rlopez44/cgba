@@ -20,22 +20,30 @@ static int count_set_bits(uint32_t n)
     return nset;
 }
 
+// prefetch a new instruction for the instruction pipeline
+void prefetch(arm7tdmi *cpu)
+{
+    bool thumb = cpu->cpsr & T_BITMASK;
+    cpu->pipeline[0] = cpu->pipeline[1];
+
+    uint32_t fetched;
+    if (thumb)
+        fetched = read_halfword(cpu->mem, cpu->registers[R15]);
+    else
+        fetched = read_word(cpu->mem, cpu->registers[R15]);
+
+    cpu->pipeline[1] = fetched;
+    cpu->registers[R15] += thumb ? 2 : 4;
+
+    if (fetched <= 0x3fff)
+        cpu->mem->last_fetched_bios_opcode = fetched;
+}
+
 /* Reload the instruction pipeline after a pipeline flush */
 void reload_pipeline(arm7tdmi *cpu)
 {
-    bool thumb = cpu->cpsr & T_BITMASK;
-    if (thumb)
-    {
-        cpu->pipeline[0] = read_halfword(cpu->mem, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_halfword(cpu->mem, cpu->registers[R15] + 2);
-        cpu->registers[R15] += 4;
-    }
-    else
-    {
-        cpu->pipeline[0] = read_word(cpu->mem, cpu->registers[R15] + 0);
-        cpu->pipeline[1] = read_word(cpu->mem, cpu->registers[R15] + 4);
-        cpu->registers[R15] += 8;
-    }
+    prefetch(cpu);
+    prefetch(cpu);
 }
 
 void skip_boot_screen(arm7tdmi *cpu)
@@ -57,23 +65,6 @@ static int decode_and_execute(arm7tdmi *cpu)
         num_clocks = decode_and_execute_arm(cpu);
 
     return num_clocks;
-}
-
-// prefetch a new instruction for the instruction pipeline
-void prefetch(arm7tdmi *cpu)
-{
-    bool thumb = cpu->cpsr & T_BITMASK;
-    cpu->pipeline[0] = cpu->pipeline[1];
-
-    uint32_t fetched;
-    if (thumb)
-        fetched = read_halfword(cpu->mem, cpu->registers[R15]);
-    else
-        fetched = read_word(cpu->mem, cpu->registers[R15]);
-
-    cpu->pipeline[1] = fetched;
-
-    cpu->registers[R15] += thumb ? 2 : 4;
 }
 
 // Decode ARM condition field or THUMB conditial branch condition
