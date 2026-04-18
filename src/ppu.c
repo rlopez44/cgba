@@ -39,10 +39,14 @@ typedef struct scanline_data {
     bool px_transparency[FRAME_WIDTH];
 } scanline_data;
 
-static inline uint8_t get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno)
+static const int text_bg_px_widths[4] = {256, 512, 256, 512};
+static const int text_bg_px_heights[4] = {256, 256, 512, 512};
+
+static inline int get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno)
 {
-    uint16_t yoff = ppu->bgvoffsets[bgno];
-    return ((uint16_t)ppu->vcount + yoff) & 0xff;
+    int h = text_bg_px_heights[bgno];
+    int yoff = ppu->bgvoffsets[bgno];
+    return ((int)ppu->vcount + yoff) & (h - 1);
 }
 
 gba_ppu *init_ppu(void)
@@ -166,10 +170,15 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
                                    enum PPU_BGNO bgno,
                                    uint16_t dest[static TILES_PER_SCANLINE])
 {
-    uint8_t effective_vcount = get_effective_vcount(ppu, bgno);
+    int effective_vcount = get_effective_vcount(ppu, bgno);
+
+    // the constituent screen block within the tile map
+    // TODO: account for horizontal scrolling
+    int screen_block_number = effective_vcount / text_bg_px_heights[bgno];
+
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int map_base_offset = (bgcnt >> 8) & 0x1f;
-    uint32_t map_base_addr = VRAM_START + 2*KB*map_base_offset;
+    uint32_t map_base_addr = VRAM_START + 2*KB*(map_base_offset + screen_block_number);
 
     uint32_t scanline_start = map_base_addr + 2*32*(effective_vcount / 8);
 
@@ -248,13 +257,6 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
 
 static void render_background(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
 {
-    int map_size = (get_bgcnt(ppu, bgno) >> 14) & 0x3;
-    if (map_size)
-    {
-        fprintf(stderr, "Can only handle BG map size 0. Got: %d\n", map_size);
-        exit(1);
-    }
-
     render_tile_data(ppu, bgno, scdata);
 }
 
