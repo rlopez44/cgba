@@ -28,6 +28,7 @@ void on_keypress(gba_gamepad *pad, SDL_KeyboardEvent *key_event)
         case SDLK_w:      shift = BUTTON_UP; break;
         case SDLK_a:      shift = BUTTON_LEFT; break;
         case SDLK_s:      shift = BUTTON_DOWN; break;
+        case SDLK_d:      shift = BUTTON_RIGHT; break;
         case SDLK_j:      shift = BUTTON_B; break;
         case SDLK_k:      shift = BUTTON_A; break;
         case SDLK_u:      shift = BUTTON_L; break;
