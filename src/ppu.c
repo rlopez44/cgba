@@ -42,9 +42,9 @@ typedef struct scanline_data {
 static const int text_bg_px_widths[4] = {256, 512, 256, 512};
 static const int text_bg_px_heights[4] = {256, 256, 512, 512};
 
-static inline int get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno)
+static inline int get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno, int bgsize)
 {
-    int h = text_bg_px_heights[bgno];
+    int h = text_bg_px_heights[bgsize];
     int yoff = ppu->bgvoffsets[bgno];
     return ((int)ppu->vcount + yoff) & (h - 1);
 }
@@ -170,13 +170,16 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
                                    enum PPU_BGNO bgno,
                                    uint16_t dest[static TILES_PER_SCANLINE])
 {
-    int effective_vcount = get_effective_vcount(ppu, bgno);
+    uint16_t bgcnt = get_bgcnt(ppu, bgno);
+    int bgsize = (bgcnt >> 14) & 0x3;
+
+    // the effective vcount within the current bg map
+    int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
 
     // the constituent screen block within the tile map
     // TODO: account for horizontal scrolling
-    int screen_block_number = effective_vcount / text_bg_px_heights[bgno];
+    int screen_block_number = effective_vcount / text_bg_px_heights[bgsize];
 
-    uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int map_base_offset = (bgcnt >> 8) & 0x1f;
     uint32_t map_base_addr = VRAM_START + 2*KB*(map_base_offset + screen_block_number);
 
@@ -205,8 +208,10 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
         exit(1);
     }
 
+    int bgsize = (bgcnt >> 14) & 0x3;
     int tile_base_offset = (bgcnt >> 2) & 0x3;
     uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
+    int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
 
     uint16_t tile_map_entries[TILES_PER_SCANLINE] = {0};
     fetch_tile_map_entries(ppu, bgno, tile_map_entries);
@@ -218,7 +223,6 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
         int paletteno = (tile_map_entry >> 12) & 0xf;
         bool yflip = tile_map_entry & (1 << 11);
         bool xflip = tile_map_entry & (1 << 10);
-        uint8_t effective_vcount = get_effective_vcount(ppu, bgno);
         int yoffset = yflip ? 7 - effective_vcount % 8 : effective_vcount % 8;
         uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
         uint32_t palette_offset = PRAM_START + 32*paletteno;
