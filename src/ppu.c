@@ -17,7 +17,8 @@
 #define VBLANK_END    227 /* scanline end for vblank */
 #define NUM_SCANLINES 228
 
-#define TILES_PER_SCANLINE (FRAME_WIDTH / 8)
+#define PX_PER_TILE 8
+#define TILES_PER_SCANLINE (FRAME_WIDTH / PX_PER_TILE)
 
 #define KB 1024
 
@@ -26,6 +27,10 @@
 
 #define PRAM_START 0x05000000
 #define VRAM_START 0x06000000
+
+/* screen block dimensions */
+#define SB_PX_SIDE_LENGTH 256
+#define SB_TILE_SIDE_LENGTH (SB_PX_SIDE_LENGTH / PX_PER_TILE)
 
 enum PPU_BGNO {
     PPU_BG0,
@@ -42,6 +47,7 @@ typedef struct scanline_data {
 static const int text_bg_px_widths[4] = {256, 512, 256, 512};
 static const int text_bg_px_heights[4] = {256, 256, 512, 512};
 
+/* Calculates the effective vcount within a BG map using the vertical scroll of the given BG */
 static inline int get_effective_vcount(gba_ppu *ppu, enum PPU_BGNO bgno, int bgsize)
 {
     int h = text_bg_px_heights[bgsize];
@@ -173,21 +179,23 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int bgsize = (bgcnt >> 14) & 0x3;
 
-    // the effective vcount within the current bg map
+    // TODO: account for horizontal scrolling
+    int w = text_bg_px_widths[bgsize];
     int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
 
-    // the constituent screen block within the tile map
-    // TODO: account for horizontal scrolling
-    int screen_block_number = effective_vcount / text_bg_px_heights[bgsize];
+    // the effective vcount within the currently addressed screen block of the bg map
+    int sb_vcount = effective_vcount & (SB_PX_SIDE_LENGTH - 1);
+
+    // The currently addressed screen block within the tile map.
+    // For calculation details, see: https://www.coranac.com/tonc/text/regbg.htm#ssec-map-layout
+    int screen_block_number = (effective_vcount / SB_PX_SIDE_LENGTH) * (w / SB_PX_SIDE_LENGTH);
 
     int map_base_offset = (bgcnt >> 8) & 0x1f;
     uint32_t map_base_addr = VRAM_START + 2*KB*(map_base_offset + screen_block_number);
-
-    uint32_t scanline_start = map_base_addr + 2*32*(effective_vcount / 8);
+    uint32_t scanline_start = map_base_addr + 2*SB_TILE_SIDE_LENGTH*(sb_vcount / PX_PER_TILE);
 
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
-        // TODO: implement horizontal scrolling
         uint32_t curr_addr = scanline_start + 2*i;
         dest[i] = read_halfword(ppu->mem, curr_addr);
     }
@@ -195,7 +203,7 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
 
 static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
 {
-    // TODO: account for scrolling of the BG
+    // TODO: account for horizontal scrolling of the BG
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     if (bgcnt & (1 << 7))
     {
