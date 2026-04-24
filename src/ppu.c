@@ -42,6 +42,8 @@ enum PPU_BGNO {
 typedef struct scanline_data {
     uint16_t px_colors[FRAME_WIDTH];
     bool px_transparency[FRAME_WIDTH];
+    uint8_t px_indices[FRAME_WIDTH];
+    uint8_t palette_numbers[FRAME_WIDTH];
 } scanline_data;
 
 static const int text_bg_px_widths[4] = {256, 512, 256, 512};
@@ -172,9 +174,7 @@ static uint16_t get_bgcnt(gba_ppu *ppu, enum PPU_BGNO bgno)
     return bgcnt;
 }
 
-static void fetch_tile_map_entries(gba_ppu *ppu,
-                                   enum PPU_BGNO bgno,
-                                   uint16_t dest[static TILES_PER_SCANLINE])
+static uint16_t fetch_tile_map_entry(gba_ppu *ppu, enum PPU_BGNO bgno, int tile_idx)
 {
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int bgsize = (bgcnt >> 14) & 0x3;
@@ -194,10 +194,48 @@ static void fetch_tile_map_entries(gba_ppu *ppu,
     uint32_t map_base_addr = VRAM_START + 2*KB*(map_base_offset + screen_block_number);
     uint32_t scanline_start = map_base_addr + 2*SB_TILE_SIDE_LENGTH*(sb_vcount / PX_PER_TILE);
 
+    return read_halfword(ppu->mem, scanline_start + 2*tile_idx);
+}
+
+static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
+{
+    uint16_t bgcnt = get_bgcnt(ppu, bgno);
+    int bgsize = (bgcnt >> 14) & 0x3;
+    int tile_base_offset = (bgcnt >> 2) & 0x3;
+    int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
     for (int i = 0; i < TILES_PER_SCANLINE; ++i)
     {
-        uint32_t curr_addr = scanline_start + 2*i;
-        dest[i] = read_halfword(ppu->mem, curr_addr);
+        uint16_t tile_map_entry = fetch_tile_map_entry(ppu, bgno, i);
+        int tileno = tile_map_entry & 0x3ff;
+        int paletteno = (tile_map_entry >> 12) & 0xf;
+        bool yflip = tile_map_entry & (1 << 11);
+        bool xflip = tile_map_entry & (1 << 10);
+        int yoffset = yflip ? 7 - effective_vcount % 8 : effective_vcount % 8;
+        uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
+        uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
+
+        int j;
+        for (j = 0; j < 8; ++j)
+            scdata->palette_numbers[8*i + j] = paletteno;
+
+        for (j = 0; j < 4; ++j)
+        {
+            uint32_t offset = xflip ? 3 - j : j;
+            uint8_t palette_idx = read_byte(ppu->mem, line_addr + offset);
+            uint8_t left_px_idx = palette_idx & 0xf;
+            uint8_t right_px_idx = (palette_idx >> 4) & 0xf;
+
+            if (xflip)
+            {
+                uint8_t tmp = left_px_idx;
+                left_px_idx = right_px_idx;
+                right_px_idx = tmp;
+            }
+
+            int idx_base = 8*i + 2*j;
+            scdata->px_indices[idx_base] = left_px_idx;
+            scdata->px_indices[idx_base + 1] = right_px_idx;
+        }
     }
 }
 
@@ -216,53 +254,18 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
         exit(1);
     }
 
-    int bgsize = (bgcnt >> 14) & 0x3;
-    int tile_base_offset = (bgcnt >> 2) & 0x3;
-    uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
-    int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
+    fetch_pixel_data(ppu, bgno, scdata);
 
-    uint16_t tile_map_entries[TILES_PER_SCANLINE] = {0};
-    fetch_tile_map_entries(ppu, bgno, tile_map_entries);
-
-    for (int i = 0; i < TILES_PER_SCANLINE; ++i)
+    for (int i = 0; i < FRAME_WIDTH; ++i)
     {
-        uint16_t tile_map_entry = tile_map_entries[i];
-        int tileno = tile_map_entry & 0x3ff;
-        int paletteno = (tile_map_entry >> 12) & 0xf;
-        bool yflip = tile_map_entry & (1 << 11);
-        bool xflip = tile_map_entry & (1 << 10);
-        int yoffset = yflip ? 7 - effective_vcount % 8 : effective_vcount % 8;
-        uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
-        uint32_t palette_offset = PRAM_START + 32*paletteno;
+        uint8_t pixel_index = scdata->px_indices[i];
+        // each palette is 16 16-bit colors in size
+        uint32_t palette_offset = PRAM_START + 32*scdata->palette_numbers[i];
 
-        for (int j = 0; j < 4; ++j)
+        if (scdata->px_transparency[i] && pixel_index)
         {
-            uint32_t offset = xflip ? 3 - j : j;
-            uint8_t palette_idx = read_byte(ppu->mem, line_addr + offset);
-            uint8_t left_px_idx = palette_idx & 0xf;
-            uint8_t right_px_idx = (palette_idx >> 4) & 0xf;
-
-            if (xflip)
-            {
-                uint8_t tmp = left_px_idx;
-                left_px_idx = right_px_idx;
-                right_px_idx = tmp;
-            }
-
-            int px_base = 8*i + 2*j;
-            if (scdata->px_transparency[px_base] && left_px_idx)
-            {
-                scdata->px_colors[px_base] = read_halfword(ppu->mem,
-                                                           palette_offset + 2*left_px_idx);
-                scdata->px_transparency[px_base] = false;
-            }
-
-            if (scdata->px_transparency[px_base + 1] && right_px_idx)
-            {
-                scdata->px_colors[px_base + 1] = read_halfword(ppu->mem,
-                                                               palette_offset + 2*right_px_idx);
-                scdata->px_transparency[px_base + 1] = false;
-            }
+            scdata->px_colors[i] = read_halfword(ppu->mem, palette_offset + 2*pixel_index);
+            scdata->px_transparency[i] = false;
         }
     }
 }
