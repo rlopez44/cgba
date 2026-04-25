@@ -42,8 +42,7 @@ enum PPU_BGNO {
 typedef struct scanline_data {
     uint16_t px_colors[FRAME_WIDTH];
     bool px_transparency[FRAME_WIDTH];
-    uint8_t px_indices[FRAME_WIDTH];
-    uint8_t palette_numbers[FRAME_WIDTH];
+    uint32_t px_color_addrs[FRAME_WIDTH];
 } scanline_data;
 
 static const int text_bg_px_widths[4] = {256, 512, 256, 512};
@@ -207,34 +206,42 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
     {
         uint16_t tile_map_entry = fetch_tile_map_entry(ppu, bgno, i);
         int tileno = tile_map_entry & 0x3ff;
-        int paletteno = (tile_map_entry >> 12) & 0xf;
+        uint32_t palette_bank = (tile_map_entry >> 12) & 0xf;
         bool yflip = tile_map_entry & (1 << 11);
         bool xflip = tile_map_entry & (1 << 10);
         int yoffset = yflip ? 7 - effective_vcount % 8 : effective_vcount % 8;
         uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
         uint32_t line_addr = tile_base_addr + 32*tileno + 4*yoffset;
 
-        int j;
-        for (j = 0; j < 8; ++j)
-            scdata->palette_numbers[8*i + j] = paletteno;
-
-        for (j = 0; j < 4; ++j)
+        // each palette bank is 16 16-bit colors in size
+        uint32_t palette_bank_addr = PRAM_START + 32 * palette_bank;
+        for (int j = 0; j < 4; ++j)
         {
             uint32_t offset = xflip ? 3 - j : j;
-            uint8_t palette_idx = read_byte(ppu->mem, line_addr + offset);
-            uint8_t left_px_idx = palette_idx & 0xf;
-            uint8_t right_px_idx = (palette_idx >> 4) & 0xf;
+            uint8_t pixel_info = read_byte(ppu->mem, line_addr + offset);
+            uint32_t left_colorno = pixel_info & 0xf;
+            uint32_t right_colorno = (pixel_info >> 4) & 0xf;
+
+            // NOTE: color 0 of each palette bank is not used and the pixel is instead transparent
+            // This is encoded here as a palette color address of null (0)
+            uint32_t left_px_color_addr = 0, right_px_color_addr = 0;
+
+            if (left_colorno)
+                left_px_color_addr = palette_bank_addr + 2*left_colorno;
+
+            if (right_colorno)
+                right_px_color_addr = palette_bank_addr + 2*right_colorno;
 
             if (xflip)
             {
-                uint8_t tmp = left_px_idx;
-                left_px_idx = right_px_idx;
-                right_px_idx = tmp;
+                uint32_t tmp = left_px_color_addr;
+                left_px_color_addr = right_px_color_addr;
+                right_px_color_addr = tmp;
             }
 
             int idx_base = 8*i + 2*j;
-            scdata->px_indices[idx_base] = left_px_idx;
-            scdata->px_indices[idx_base + 1] = right_px_idx;
+            scdata->px_color_addrs[idx_base] = left_px_color_addr;
+            scdata->px_color_addrs[idx_base + 1] = right_px_color_addr;
         }
     }
 }
@@ -258,13 +265,11 @@ static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
 
     for (int i = 0; i < FRAME_WIDTH; ++i)
     {
-        uint8_t pixel_index = scdata->px_indices[i];
-        // each palette is 16 16-bit colors in size
-        uint32_t palette_offset = PRAM_START + 32*scdata->palette_numbers[i];
+        uint32_t color_addr = scdata->px_color_addrs[i];
 
-        if (scdata->px_transparency[i] && pixel_index)
+        if (scdata->px_transparency[i] && color_addr)
         {
-            scdata->px_colors[i] = read_halfword(ppu->mem, palette_offset + 2*pixel_index);
+            scdata->px_colors[i] = read_halfword(ppu->mem, color_addr);
             scdata->px_transparency[i] = false;
         }
     }
