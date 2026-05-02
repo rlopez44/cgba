@@ -224,7 +224,7 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
 {
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int bgsize = (bgcnt >> 14) & 0x3;
-    bool eight_bit_color = bgcnt & (1 << 7);
+    bool four_bit_color = !(bgcnt & (1 << 7));
     int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
     int tile_vcount = effective_vcount % TILE_PX_SIDE_LENGTH;
     uint32_t tile_base_offset = (bgcnt >> 2) & 0x3;
@@ -246,42 +246,32 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
             populate_tile_data(tile_map_entry, &tile_data);
         }
 
+        uint32_t xoffset = tile_data.xflip ? 7 - tile_pixelno : tile_pixelno;
         uint32_t yoffset = tile_data.yflip ? 7 - tile_vcount : tile_vcount;
-        uint32_t line_addr = tile_base_addr;
+        uint32_t line_offset = 64*tile_data.tileno + 8*yoffset;
+        // NOTE: 8-bit color mode has one palette w/256 colors
+        uint32_t palette_start_addr = PRAM_START;
 
-        // NOTE: color 0 of each palette bank is not used and the pixel is instead transparent
-        // This is encoded here as a palette color address of null (0)
-        uint32_t color_addr = 0;
-        uint32_t xoffset;
-        uint32_t colorno;
-        if (eight_bit_color)
+        if (four_bit_color)
         {
-            line_addr += 64*tile_data.tileno + 8*yoffset;
-            xoffset = tile_data.xflip ? 7 - tile_pixelno : tile_pixelno;
-            colorno = read_byte(ppu->mem, line_addr + xoffset);
-
-            if (colorno)
-                color_addr = PRAM_START + 2*colorno;
+            // 16 palette banks w/16 colors each
+            palette_start_addr += 32*tile_data.palette_bank;
+            // each tile has two pixels per byte
+            line_offset /= 2;
+            xoffset /= 2;
         }
-        else
+
+        uint32_t colorno = read_byte(ppu->mem, tile_base_addr + line_offset + xoffset);
+        if (four_bit_color)
         {
-            int tile_byte = tile_pixelno / 2;
-            line_addr += 32*tile_data.tileno + 4*yoffset;
-            xoffset = tile_data.xflip ? 3 - tile_byte : tile_byte;
-            uint8_t pixel_info = read_byte(ppu->mem, line_addr + xoffset);
-
-            // each palette bank is 16 16-bit colors in size
-            uint32_t palette_bank_addr = PRAM_START + 32 * tile_data.palette_bank;
-
-            // pixel info arrangement: upper nibble = right, lower nibble = left
+            // pixel arrangement: upper nibble = right, lower nibble = left
             if (tile_pixelno & 1 || tile_data.xflip)
-                pixel_info >>= 4;
-            colorno = pixel_info & 0xf;
-
-            if (colorno)
-                color_addr = palette_bank_addr + 2*colorno;
+                colorno >>= 4;
+            colorno &= 0xf;
         }
-        scdata->px_color_addrs[pixels_fetched] = color_addr;
+
+        // color index 0 indicates a transparent pixel (encoded as a color address of 0)
+        scdata->px_color_addrs[pixels_fetched] = colorno ? palette_start_addr + 2*colorno : 0;
     }
 }
 
