@@ -73,7 +73,7 @@ static inline int get_effective_pixelno(gba_ppu *ppu, enum PPU_BGNO bgno, int bg
 static inline void populate_tile_data(uint16_t tile_map_entry, tile_entry_data *tile_data)
 {
     tile_data->tileno = tile_map_entry & 0x3ff;
-    tile_data->palette_bank = (tile_map_entry >> 12) & 0xf;
+    tile_data->palette_bank = (tile_map_entry >> 12) & 0xf; // not used in 8-bit color mode
     tile_data->yflip = tile_map_entry & (1 << 11);
     tile_data->xflip = tile_map_entry & (1 << 10);
 }
@@ -224,6 +224,7 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
 {
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
     int bgsize = (bgcnt >> 14) & 0x3;
+    bool eight_bit_color = bgcnt & (1 << 7);
     int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
     int tile_vcount = effective_vcount % PX_PER_TILE;
     uint32_t tile_base_offset = (bgcnt >> 2) & 0x3;
@@ -236,7 +237,6 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
     {
         int effective_pixelno = get_effective_pixelno(ppu, bgno, bgsize, pixels_fetched);
         int tile_pixelno = effective_pixelno % PX_PER_TILE;
-        int tile_byte = tile_pixelno / 2;
 
         int tmp_tile_entry_no = effective_pixelno / PX_PER_TILE;
         if (tmp_tile_entry_no != tile_map_entry_number)
@@ -247,20 +247,40 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
         }
 
         uint32_t yoffset = tile_data.yflip ? 7 - tile_vcount : tile_vcount;
-        uint32_t line_addr = tile_base_addr + 32*tile_data.tileno + 4*yoffset;
-        uint32_t xoffset = tile_data.xflip ? 3 - tile_byte : tile_byte;
-        uint8_t pixel_info = read_byte(ppu->mem, line_addr + xoffset);
-        // each palette bank is 16 16-bit colors in size
-        uint32_t palette_bank_addr = PRAM_START + 32 * tile_data.palette_bank;
-
-        // pixel info arrangement: upper nibble = right, lower nibble = left
-        if (tile_pixelno & 1 || tile_data.xflip)
-            pixel_info >>= 4;
-        uint32_t colorno = pixel_info & 0xf;
+        uint32_t line_addr = tile_base_addr;
 
         // NOTE: color 0 of each palette bank is not used and the pixel is instead transparent
         // This is encoded here as a palette color address of null (0)
-        uint32_t color_addr = colorno ? palette_bank_addr + 2*colorno : 0;
+        uint32_t color_addr = 0;
+        uint32_t xoffset;
+        uint32_t colorno;
+        if (eight_bit_color)
+        {
+            line_addr += 64*tile_data.tileno + 8*yoffset;
+            xoffset = tile_data.xflip ? 7 - tile_pixelno : tile_pixelno;
+            colorno = read_byte(ppu->mem, line_addr + xoffset);
+
+            if (colorno)
+                color_addr = PRAM_START + 2*colorno;
+        }
+        else
+        {
+            int tile_byte = tile_pixelno / 2;
+            line_addr += 32*tile_data.tileno + 4*yoffset;
+            xoffset = tile_data.xflip ? 3 - tile_byte : tile_byte;
+            uint8_t pixel_info = read_byte(ppu->mem, line_addr + xoffset);
+
+            // each palette bank is 16 16-bit colors in size
+            uint32_t palette_bank_addr = PRAM_START + 32 * tile_data.palette_bank;
+
+            // pixel info arrangement: upper nibble = right, lower nibble = left
+            if (tile_pixelno & 1 || tile_data.xflip)
+                pixel_info >>= 4;
+            colorno = pixel_info & 0xf;
+
+            if (colorno)
+                color_addr = palette_bank_addr + 2*colorno;
+        }
         scdata->px_color_addrs[pixels_fetched] = color_addr;
     }
 }
@@ -268,12 +288,7 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
 static void render_tile_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *scdata)
 {
     uint16_t bgcnt = get_bgcnt(ppu, bgno);
-    if (bgcnt & (1 << 7))
-    {
-        fputs("8-bit color mode not implemented yet\n", stderr);
-        exit(1);
-    }
-    else if (bgcnt & (1 << 6))
+    if (bgcnt & (1 << 6))
     {
         fputs("Mosaic effect not implemented yet\n", stderr);
         exit(1);
