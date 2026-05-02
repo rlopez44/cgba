@@ -17,8 +17,8 @@
 #define VBLANK_END    227 /* scanline end for vblank */
 #define NUM_SCANLINES 228
 
-#define PX_PER_TILE 8
-#define TILES_PER_SCANLINE (FRAME_WIDTH / PX_PER_TILE)
+#define TILE_PX_SIDE_LENGTH 8
+#define TILES_PER_SCANLINE (FRAME_WIDTH / TILE_PX_SIDE_LENGTH)
 
 #define KB 1024
 
@@ -30,7 +30,7 @@
 
 /* screen block dimensions */
 #define SB_PX_SIDE_LENGTH 256
-#define SB_TILE_SIDE_LENGTH (SB_PX_SIDE_LENGTH / PX_PER_TILE)
+#define SB_TILE_SIDE_LENGTH (SB_PX_SIDE_LENGTH / TILE_PX_SIDE_LENGTH)
 
 enum PPU_BGNO {
     PPU_BG0,
@@ -215,7 +215,7 @@ static uint16_t fetch_tile_map_entry(gba_ppu *ppu, enum PPU_BGNO bgno, int tile_
 
     int map_base_offset = (bgcnt >> 8) & 0x1f;
     uint32_t map_base_addr = VRAM_START + 2*KB*(map_base_offset + screen_block_number);
-    uint32_t scanline_start = map_base_addr + 2*SB_TILE_SIDE_LENGTH*(sb_vcount / PX_PER_TILE);
+    uint32_t scanline_start = map_base_addr + 2*SB_TILE_SIDE_LENGTH*(sb_vcount / TILE_PX_SIDE_LENGTH);
 
     return read_halfword(ppu->mem, scanline_start + 2*sb_tile_idx);
 }
@@ -226,7 +226,7 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
     int bgsize = (bgcnt >> 14) & 0x3;
     bool eight_bit_color = bgcnt & (1 << 7);
     int effective_vcount = get_effective_vcount(ppu, bgno, bgsize);
-    int tile_vcount = effective_vcount % PX_PER_TILE;
+    int tile_vcount = effective_vcount % TILE_PX_SIDE_LENGTH;
     uint32_t tile_base_offset = (bgcnt >> 2) & 0x3;
     uint32_t tile_base_addr = VRAM_START + 16*KB*tile_base_offset;
 
@@ -236,9 +236,9 @@ static void fetch_pixel_data(gba_ppu *ppu, enum PPU_BGNO bgno, scanline_data *sc
     for (int pixels_fetched = 0; pixels_fetched < FRAME_WIDTH; ++pixels_fetched)
     {
         int effective_pixelno = get_effective_pixelno(ppu, bgno, bgsize, pixels_fetched);
-        int tile_pixelno = effective_pixelno % PX_PER_TILE;
+        int tile_pixelno = effective_pixelno % TILE_PX_SIDE_LENGTH;
 
-        int tmp_tile_entry_no = effective_pixelno / PX_PER_TILE;
+        int tmp_tile_entry_no = effective_pixelno / TILE_PX_SIDE_LENGTH;
         if (tmp_tile_entry_no != tile_map_entry_number)
         {
             tile_map_entry_number = tmp_tile_entry_no;
