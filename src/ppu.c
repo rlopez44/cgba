@@ -394,6 +394,39 @@ static void render_mode4_scanline(gba_ppu *ppu)
     }
 }
 
+static void render_mode5_scanline(gba_ppu *ppu)
+{
+    // TODO: implement affine transformations
+    const uint32_t w = 160, h = 128;
+    uint32_t scanline_base_offset = FRAME_WIDTH * ppu->vcount;
+    uint32_t bitmap_base_offset = w * ppu->vcount;
+    bool bg2_enabled = ppu->dispcnt & (1 << 10);
+    bool frameno = ppu->dispcnt & (1 << 4);
+
+    if (bg2_enabled)
+    {
+        uint32_t bitmap_start_addr = VRAM_START + frameno*0xa000;
+        uint32_t addr;
+        for (uint32_t i = 0; i < FRAME_WIDTH; ++i)
+        {
+            if (ppu->vcount < h && i < w)
+            {
+                addr = bitmap_start_addr + 2*(bitmap_base_offset + i);
+                ppu->frame_buffer[scanline_base_offset + i] = read_halfword(ppu->mem, addr);
+            }
+            else // areas outside the bitmap are filled with color 0 of palette RAM
+            {
+                ppu->frame_buffer[scanline_base_offset + i] = read_halfword(ppu->mem, PRAM_START);
+            }
+        }
+    }
+    else
+    {
+        for (uint32_t i = 0; i < FRAME_WIDTH; ++i)
+            ppu->frame_buffer[scanline_base_offset + i] = WHITE;
+    }
+}
+
 static void render_scanline(gba_ppu *ppu)
 {
     if (ppu->dispcnt & (1 << 7)) // forced blank
@@ -409,6 +442,10 @@ static void render_scanline(gba_ppu *ppu)
 
         case 0x4:
             render_mode4_scanline(ppu);
+            break;
+
+        case 0x5:
+            render_mode5_scanline(ppu);
             break;
 
         case 0x0:
